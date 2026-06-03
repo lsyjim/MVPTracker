@@ -6,6 +6,12 @@
       "runtimeExecutable": "env",
       "runtimeArgs": ["MVP_WEB=1", "MVP_PORT=8200", "python3", "main.py"],
       "port": 8200
+    },
+    {
+      "name": "mvp-robot",
+      "runtimeExecutable": "env",
+      "runtimeArgs": ["MVP_WEB=1", "MVP_PORT=8201", "MVP_DETAIL=18", "python3", "main.py"],
+      "port": 8201
     }
   ]
 }

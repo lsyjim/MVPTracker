@@ -14,7 +14,9 @@ if condb.is_empty(con):
     with open(os.path.join(ROOT, "storage", "concept_map.json"), encoding="utf-8") as f:
         store.import_concept_map(con, json.load(f))
 
-state = {"page": "overview", "theme_id": None}
+# 測試/除錯 hook：MVP_DETAIL=<theme_id> 啟動即停在該題材明細頁
+_dt = os.environ.get("MVP_DETAIL")
+state = {"page": "detail" if _dt else "overview", "theme_id": int(_dt) if _dt else None}
 
 
 def get_metrics():
@@ -69,7 +71,10 @@ def _render_page(content):
             overview.render(con, on_open_theme=lambda m: _go("detail", m.theme_id),
                             get_metrics=get_metrics, on_theme_changed=lambda: _go("overview"))
         elif state["page"] == "detail":
-            ui.label("明細頁（Task 11 實作）")
+            from ui import detail
+            detail.render(con, state["theme_id"],
+                          on_open_stock=lambda c, r: ui.notify(f'{c["name"]} {c["code"]}（個股彈窗於 Task 13 接上）'),
+                          on_changed=lambda: _go("detail", state["theme_id"]))
         elif state["page"] == "watch":
             ui.label("自選頁（Task 19 實作）")
 

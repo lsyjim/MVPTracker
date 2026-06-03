@@ -1,5 +1,11 @@
 # scanner/theme_scanner.py
+import sys, os, statistics
 from dataclasses import dataclass
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "analysis"))
+
+from concept import store
+from data import institutional, cache
+from ui import theme as uitheme
 
 
 @dataclass
@@ -22,7 +28,7 @@ def is_diverge(m: float, inst: float) -> bool:
 
 
 def mock_overview():
-    """假資料（取自 mockup themes 陣列），步驟 5 換成 real_overview。"""
+    """假資料（取自 mockup themes 陣列）。保留供 MVP_WEB demo 與離線測試。"""
     raw = [("先進封裝", 8.4, 70, 8), ("AI/伺服器", 6.7, 55, 16), ("機器人", 5.2, 25, 20), ("散熱", 4.1, 60, 6),
            ("半導體設備", 3.3, 20, 7), ("軟體", 2.9, -15, 30), ("光通訊", 2.6, 40, 10), ("IC設計", 1.6, 10, 6),
            ("記憶體", 1.1, -45, 9), ("連接器", 0.8, 5, 4), ("晶圓代工", 0.4, -20, 3), ("電源管理", -0.4, -10, 5),
@@ -31,4 +37,96 @@ def mock_overview():
     for i, (n, m, inst, c) in enumerate(raw):
         out.append(ThemeMetrics(theme_id=i + 1, key=f"mock_{i}", name=n, momentum_5d=m,
                                 inst_net=inst, count=c, diverge=is_diverge(m, inst)))
+    return out
+
+
+# ============================================================================
+# 真資料：QuickAnalyzer 逐檔 + 題材聚合（每日快取）
+# ============================================================================
+
+def _signal_text(res):
+    """從 QuickAnalyzer result 取得乾淨的訊號文字（供 grade_tag 分級與明細列顯示）。"""
+    dm = res.get("decision_matrix", {}) or {}
+    # SELL 情境 grade_tag 不一定抓得到「賣訊」字樣，直接給賣出語意確保綠色 badge
+    if dm.get("scenario") == "SELL":
+        return "賣出 " + (dm.get("recommendation") or "")
+    rec = dm.get("recommendation")
+    if rec:
+        return rec
+    overall = (res.get("recommendation") or {})
+    if isinstance(overall, dict) and overall.get("overall"):
+        return overall["overall"]
+    return "觀察"
+
+
+def analyze_stock_row(code, con=None):
+    """單檔 → 明細列 dict。用 QuickAnalyzer.analyze_stock（grade/RS/recommendation）+ /iibs 法人。
+    每日快取於 scan_cache(kind='row')。"""
+    if con is not None:
+        cached, ts = cache.get(con, code, "row")
+        if cached and cache.is_today(ts):
+            return cached
+    from quick_analyzer import QuickAnalyzer
+    res = QuickAnalyzer.analyze_stock(code, "台股")
+    chip = institutional.chip_flow(code, con)
+    if not res:
+        row = {"price": 0, "today_pct": 0, "d5_pct": 0, "rs": 50, "inst": chip.get("total", 0), "signal": "觀察"}
+    else:
+        rs = res.get("relative_strength", {}).get("rs_score", 50)
+        d5 = res.get("relative_strength", {}).get("rs_5d", 0)
+        row = {
+            "price": res.get("current_price", 0),
+            "today_pct": res.get("price_change_pct", 0),
+            "d5_pct": d5,
+            "rs": round(rs),
+            "inst": chip.get("total", 0),
+            "signal": _signal_text(res),
+        }
+    if con is not None:
+        cache.put(con, code, "row", row)
+    return row
+
+
+def aggregate_theme(rows):
+    if not rows:
+        return {"momentum_5d": 0, "up_count": 0, "down_count": 0, "inst_ratio": 0, "strong_ratio": 0, "inst_net": 0}
+    moms = [r["d5_pct"] for r in rows]
+    nets = {str(i): r["inst"] for i, r in enumerate(rows)}
+    strong = sum(1 for r in rows if uitheme.grade_tag(r["signal"]) in ("grade_A", "grade_B"))
+    return {
+        "momentum_5d": statistics.mean(moms),
+        "up_count": sum(1 for r in rows if r["today_pct"] > 0),
+        "down_count": sum(1 for r in rows if r["today_pct"] < 0),
+        "inst_ratio": institutional.theme_inst_ratio(nets),
+        "strong_ratio": strong / len(rows),
+        "inst_net": round((institutional.theme_inst_ratio(nets) * 2 - 1) * 100),  # -100..100 給熱圖
+    }
+
+
+def _all_codes(con, theme_id):
+    cons = store.list_constituents(con, theme_id, None)
+    for s in store.list_sub_themes(con, theme_id):
+        cons += store.list_constituents(con, theme_id, s["id"])
+    return cons
+
+
+def scan_theme(con, theme_id):
+    """題材所有成分股逐檔分析 → {code: row} + 聚合。"""
+    cons = _all_codes(con, theme_id)
+    rows = {c["code"]: analyze_stock_row(c["code"], con) for c in cons}
+    agg = aggregate_theme(list(rows.values()))
+    return rows, agg
+
+
+def real_overview(con):
+    out = []
+    for t in store.list_themes(con):
+        cons = _all_codes(con, t["id"])
+        rows = [analyze_stock_row(c["code"], con) for c in cons]
+        agg = aggregate_theme(rows)
+        out.append(ThemeMetrics(theme_id=t["id"], key=t["key"], name=t["name"],
+                                momentum_5d=round(agg["momentum_5d"], 1), inst_net=agg["inst_net"],
+                                count=len(cons), up_count=agg["up_count"], down_count=agg["down_count"],
+                                strong_ratio=agg["strong_ratio"],
+                                diverge=is_diverge(agg["momentum_5d"], agg["inst_net"])))
     return out

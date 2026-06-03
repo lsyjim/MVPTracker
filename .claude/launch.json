@@ -24,6 +24,12 @@
       "runtimeExecutable": "env",
       "runtimeArgs": ["MVP_WEB=1", "MVP_PORT=8203", "MVP_DETAIL=3", "python3", "main.py"],
       "port": 8203
+    },
+    {
+      "name": "mvp-watch",
+      "runtimeExecutable": "env",
+      "runtimeArgs": ["MVP_WEB=1", "MVP_PORT=8204", "MVP_PAGE=watch", "python3", "main.py"],
+      "port": 8204
     }
   ]
 }

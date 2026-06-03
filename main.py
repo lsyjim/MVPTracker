@@ -18,9 +18,10 @@ if condb.is_empty(con):
 # 富邦行情初始化（需登入憑證；失敗則只走 yfinance fallback）
 FUBON_OK = fetcher.init_fubon()
 
-# 測試/除錯 hook：MVP_DETAIL=<theme_id> 啟動即停在該題材明細頁
+# 測試/除錯 hook：MVP_DETAIL=<theme_id> 停在明細頁；MVP_PAGE=<page> 停在指定頁
 _dt = os.environ.get("MVP_DETAIL")
-state = {"page": "detail" if _dt else "overview", "theme_id": int(_dt) if _dt else None}
+_pg = os.environ.get("MVP_PAGE") or ("detail" if _dt else "overview")
+state = {"page": _pg, "theme_id": int(_dt) if _dt else None}
 
 
 def get_metrics():
@@ -133,7 +134,8 @@ def _render_page(content):
                     {"code": "2049", "name": "上銀", "in_master": 1},
                     {"price": 612, "today_pct": 3.0, "rs": 91}), once=True)
         elif state["page"] == "watch":
-            ui.label("自選頁（Task 19 實作）")
+            from ui import watchlist
+            watchlist.render(con)
 
 
 if os.environ.get("MVP_WEB") == "1":

@@ -8,11 +8,15 @@ from nicegui import ui
 from concept import db as condb, store
 from ui import theme, overview
 from scanner import theme_scanner
+from data import fetcher
 
 con = condb.connect(); condb.init_schema(con)
 if condb.is_empty(con):
     with open(os.path.join(ROOT, "storage", "concept_map.json"), encoding="utf-8") as f:
         store.import_concept_map(con, json.load(f))
+
+# 富邦行情初始化（需登入憑證；失敗則只走 yfinance fallback）
+FUBON_OK = fetcher.init_fubon()
 
 # 測試/除錯 hook：MVP_DETAIL=<theme_id> 啟動即停在該題材明細頁
 _dt = os.environ.get("MVP_DETAIL")
@@ -41,6 +45,8 @@ def _app_bar():
         for txt in (f"concept_map {n}類", "回看 5日"):
             ui.label(txt).style("font-size:11px;color:var(--t2);background:var(--elev);border-radius:999px;padding:4px 11px;")
         ui.label("法人:接後端後顯示").classes("gold").style("font-size:11px;background:var(--elev);border-radius:999px;padding:4px 11px;")
+        src = "富邦即時" if FUBON_OK else "Yahoo(fallback)"
+        ui.label(src).style("font-size:11px;color:var(--t2);background:var(--elev);border-radius:999px;padding:4px 11px;")
 
 
 def _rail():

@@ -1232,7 +1232,7 @@ class DataSourceManager:
         """從 yfinance 取得歷史數據（帶熔斷保護）"""
         try:
             # 導入 YFinanceRateLimiter（避免循環導入）
-            from main import YFinanceRateLimiter
+            from yf_rate_limiter import YFinanceRateLimiter
             
             # 檢查熔斷
             if YFinanceRateLimiter.is_circuit_breaker_active():

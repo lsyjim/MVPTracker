@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "mvp-web",
+      "runtimeExecutable": "env",
+      "runtimeArgs": ["MVP_WEB=1", "MVP_PORT=8200", "python3", "main.py"],
+      "port": 8200
+    }
+  ]
+}

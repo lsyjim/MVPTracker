@@ -15,8 +15,11 @@ if condb.is_empty(con):
     with open(os.path.join(ROOT, "storage", "concept_map.json"), encoding="utf-8") as f:
         store.import_concept_map(con, json.load(f))
 
-# 富邦行情初始化（需登入憑證；失敗則只走 yfinance fallback）
-FUBON_OK = fetcher.init_fubon()
+# 富邦自動登入並啟用行情（憑證見 storage/fubon_credentials.json 或 FUBON_* 環境變數）；
+# 失敗則只走 yfinance fallback。
+from data import fubon_login
+FUBON_OK, FUBON_MSG = fubon_login.login_and_init()
+print(f"[Fubon] {FUBON_MSG}")
 
 # 測試/除錯 hook：MVP_DETAIL=<theme_id> 停在明細頁；MVP_PAGE=<page> 停在指定頁
 _dt = os.environ.get("MVP_DETAIL")

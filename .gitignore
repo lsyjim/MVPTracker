@@ -2,3 +2,8 @@ __pycache__/
 *.pyc
 storage/app.db
 .DS_Store
+# 執行期產物（vendored 後端在執行時建立）
+log/
+analysis/info_cache.json
+# 機器本地設定
+.claude/settings.local.json

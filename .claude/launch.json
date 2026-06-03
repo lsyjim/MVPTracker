@@ -12,6 +12,12 @@
       "runtimeExecutable": "env",
       "runtimeArgs": ["MVP_WEB=1", "MVP_PORT=8201", "MVP_DETAIL=18", "python3", "main.py"],
       "port": 8201
+    },
+    {
+      "name": "mvp-modal",
+      "runtimeExecutable": "env",
+      "runtimeArgs": ["MVP_WEB=1", "MVP_PORT=8202", "MVP_DETAIL=18", "MVP_MODAL=1", "python3", "main.py"],
+      "port": 8202
     }
   ]
 }

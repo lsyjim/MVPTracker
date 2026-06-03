@@ -71,10 +71,14 @@ def _render_page(content):
             overview.render(con, on_open_theme=lambda m: _go("detail", m.theme_id),
                             get_metrics=get_metrics, on_theme_changed=lambda: _go("overview"))
         elif state["page"] == "detail":
-            from ui import detail
+            from ui import detail, stock_modal
             detail.render(con, state["theme_id"],
-                          on_open_stock=lambda c, r: ui.notify(f'{c["name"]} {c["code"]}（個股彈窗於 Task 13 接上）'),
+                          on_open_stock=lambda c, r: stock_modal.open_modal(c, r),
                           on_changed=lambda: _go("detail", state["theme_id"]))
+            if os.environ.get("MVP_MODAL"):  # 測試 hook：自動開個股彈窗供截圖
+                ui.timer(0.4, lambda: stock_modal.open_modal(
+                    {"code": "2049", "name": "上銀", "in_master": 1},
+                    {"price": 612, "today_pct": 3.0, "rs": 91}), once=True)
         elif state["page"] == "watch":
             ui.label("自選頁（Task 19 實作）")
 

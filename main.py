@@ -138,7 +138,26 @@ def _render_page(content):
             watchlist.render(con)
 
 
-if os.environ.get("MVP_WEB") == "1":
+def _loop_already_running() -> bool:
+    import asyncio
+    try:
+        asyncio.get_running_loop()
+        return True
+    except RuntimeError:
+        return False
+
+
+if _loop_already_running():
+    # 在 Jupyter / IPython / Spyder 等已有事件迴圈的互動環境中無法啟動 ui.run。
+    print("\n" + "=" * 70)
+    print("⚠ 偵測到已在執行的事件迴圈（Jupyter / IPython / Spyder 互動環境）。")
+    print("  NiceGUI 桌面模式需要自己掌控行程，無法在互動環境內啟動。")
+    print("  請改在『一般終端機』執行：")
+    print("      cd " + ROOT)
+    print("      python3 main.py")
+    print("  （或瀏覽器模式測試：MVP_WEB=1 python3 main.py，再開 http://localhost:8111）")
+    print("=" * 70 + "\n")
+elif os.environ.get("MVP_WEB") == "1":
     # 測試/驗證用：瀏覽器模式（headless 可截圖）
     ui.run(native=False, port=int(os.environ.get("MVP_PORT", "8111")), reload=False, show=False)
 else:

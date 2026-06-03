@@ -24,7 +24,42 @@ state = {"page": "detail" if _dt else "overview", "theme_id": int(_dt) if _dt el
 
 
 def get_metrics():
-    return theme_scanner.mock_overview()   # 步驟 5 換 real_overview(con)
+    # 真資料：逐檔 QuickAnalyzer + /iibs 法人，聚合題材層（每日 row 快取）。
+    # 註：冷啟動會逐檔掃描全部成分股；富邦登入時最快，未登入走 yfinance 較慢。
+    # 設 MVP_MOCK=1 可改用假資料（離線/快速 demo）。
+    if os.environ.get("MVP_MOCK") == "1":
+        return theme_scanner.mock_overview()
+    return theme_scanner.real_overview(con)
+
+
+def _show_report(c):
+    from quick_analyzer import QuickAnalyzer
+    res = QuickAnalyzer.analyze_stock(c["code"], "台股") or {}
+    rec = res.get("recommendation") or {}
+    lines = []
+    if isinstance(rec, dict):
+        lines.append(f"**綜合建議**：{rec.get('overall', '—')}（評分 {rec.get('score', '—')}）")
+        lines.append(f"**情境**：{rec.get('scenario_name', '—')}")
+        if rec.get("action_timing"):
+            lines.append(f"**時機**：{rec['action_timing']}")
+        if rec.get("warning_message"):
+            lines.append(f"**提醒**：{rec['warning_message']}")
+        for k, label in (("short_term", "短線"), ("mid_term", "中線"), ("long_term", "長線")):
+            seg = rec.get(k) or {}
+            if seg:
+                lines.append(f"**{label}**：{seg.get('action', '')}　{seg.get('reason', '')}")
+    text = "\n\n".join(lines) or "（無法產生報告）"
+    with ui.dialog() as dlg, ui.card().style("background:var(--card);max-width:680px;"):
+        ui.label(f'{c["name"]} {c["code"]} 完整分析報告').style("font-weight:700;font-size:16px;")
+        ui.markdown(text)
+        ui.button("關閉", on_click=dlg.close).props("flat")
+    dlg.open()
+
+
+def _add_watch(c):
+    from concept import watchstore
+    watchstore.add(con, c["code"], c.get("name", ""))
+    ui.notify(f'已加入自選：{c.get("name", "")} {c["code"]}')
 
 
 @ui.page("/")
@@ -78,9 +113,21 @@ def _render_page(content):
                             get_metrics=get_metrics, on_theme_changed=lambda: _go("overview"))
         elif state["page"] == "detail":
             from ui import detail, stock_modal
+            rows, _agg = theme_scanner.scan_theme(con, state["theme_id"])
+            _header = {"momentum_5d": _agg["momentum_5d"], "count": len(rows),
+                       "inst_buy_count": round(_agg["inst_ratio"] * len(rows))}
+
+            def open_stock(c, r):
+                stock_modal.open_modal(
+                    c, r,
+                    get_ohlc=lambda code: fetcher.ohlc_for_echart(code)[1],
+                    on_add_watch=_add_watch,
+                    on_report=_show_report)
             detail.render(con, state["theme_id"],
-                          on_open_stock=lambda c, r: stock_modal.open_modal(c, r),
-                          on_changed=lambda: _go("detail", state["theme_id"]))
+                          on_open_stock=open_stock,
+                          on_changed=lambda: _go("detail", state["theme_id"]),
+                          get_row=lambda code: rows.get(code) or detail._mock_row(code),
+                          header=_header)
             if os.environ.get("MVP_MODAL"):  # 測試 hook：自動開個股彈窗供截圖
                 ui.timer(0.4, lambda: stock_modal.open_modal(
                     {"code": "2049", "name": "上銀", "in_master": 1},

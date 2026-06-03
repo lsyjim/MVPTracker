@@ -25,17 +25,28 @@ def momentum_color(m: float):
 
 
 def grade_tag(signal_text):
-    """純文字分級（移植自 StockGOGOV2/theme.py，邏輯不改）。"""
+    """純文字分級（移植自 StockGOGOV2/theme.py）。
+    調整：明確等級標記（A級/B級/C級）最權威，優先於關鍵字啟發，
+    避免如「C 級觀察，列入追蹤」因含「追蹤」被誤判為 B。"""
     if not signal_text:
         return None
     s = str(signal_text)
+    # 1) 明確等級標記優先（最權威）
+    if ("C級" in s) or ("C 級" in s):
+        return "grade_C"
+    if ("A級" in s) or ("A 級" in s):
+        return "grade_A"
+    if ("B級" in s) or ("B 級" in s):
+        return "grade_B"
+    # 2) 賣出語意
     if any(k in s for k in ("賣出", "避開", "減碼", "出場", "暫緩", "不建議")):
         return "grade_sell"
-    if ("A級" in s) or ("A 級" in s) or ("主攻" in s) or ("強烈建議買進" in s) or ("強力買進" in s):
+    # 3) 關鍵字啟發
+    if ("主攻" in s) or ("強烈建議買進" in s) or ("強力買進" in s):
         return "grade_A"
-    if ("B級" in s) or ("B 級" in s) or ("追蹤" in s) or ("建議買進" in s):
+    if ("追蹤" in s) or ("建議買進" in s):
         return "grade_B"
-    if ("C級" in s) or ("C 級" in s) or ("觀察" in s) or ("等待" in s) or ("觀望" in s):
+    if ("觀察" in s) or ("等待" in s) or ("觀望" in s):
         return "grade_C"
     return None
 

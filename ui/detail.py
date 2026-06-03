@@ -15,17 +15,25 @@ def _mock_row(code):
     return {"price": round(random.uniform(40, 1000), 1), "today_pct": t, "d5_pct": d5, "rs": rs, "inst": inst, "signal": sig}
 
 
-def render(con, theme_id, on_open_stock, on_changed, get_row=_mock_row):
+def render(con, theme_id, on_open_stock, on_changed, get_row=_mock_row, header=None):
     t = store.get_theme(con, theme_id)
     if not t:
         ui.label("題材不存在")
         return
     ui.html(f'<div style="font-size:12px;color:var(--t2);margin-bottom:12px;">題材總覽 › <b style="color:var(--text)">{t["name"]}</b></div>')
-    # 題材標頭（假資料聚合，步驟 5 換真）
+    # 題材標頭（header 由 scanner 聚合提供；無則顯示占位）
     with ui.element("div").style("display:flex;align-items:center;gap:18px;background:var(--card);border-radius:12px;padding:14px 18px;margin-bottom:16px;"):
         ui.label(t["name"]).style("font-size:18px;font-weight:700;")
-        ui.html('<span style="font-size:12px;color:var(--t2)">5日動能<b class="up" style="font-size:15px;display:block;font-family:var(--mono)">+5.2%</b></span>')
-        ui.html('<span style="font-size:12px;color:var(--t2)">法人<b class="gold" style="font-size:15px;display:block;font-family:var(--mono)">+25</b></span>')
+        if header:
+            mom = header.get("momentum_5d", 0)
+            mom_cls = "up" if mom >= 0 else "down"
+            buy_n = header.get("inst_buy_count", 0)
+            cnt = header.get("count", 0)
+            ui.html(f'<span style="font-size:12px;color:var(--t2)">5日動能<b class="{mom_cls}" style="font-size:15px;display:block;font-family:var(--mono)">{mom:+.1f}%</b></span>')
+            ui.html(f'<span style="font-size:12px;color:var(--t2)">法人買超<b class="gold" style="font-size:15px;display:block;font-family:var(--mono)">{buy_n}/{cnt}</b></span>')
+            ui.html(f'<span style="font-size:12px;color:var(--t2)">家數<b style="font-size:15px;display:block;font-family:var(--mono)">{cnt}</b></span>')
+        else:
+            ui.html('<span style="font-size:12px;color:var(--t2)">5日動能<b class="muted" style="font-size:15px;display:block;font-family:var(--mono)">—</b></span>')
     subs = store.list_sub_themes(con, theme_id)
     if subs:
         for i, s in enumerate(subs):

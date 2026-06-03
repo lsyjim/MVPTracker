@@ -5,6 +5,7 @@ storage/app.db
 # 執行期產物（vendored 後端在執行時建立）
 log/
 analysis/info_cache.json
+watchlist_v4*.db
 # 機器本地設定
 .claude/settings.local.json
 # 富邦登入憑證（切勿進版控）

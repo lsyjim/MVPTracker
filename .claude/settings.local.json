@@ -1,0 +1,31 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//Users/jimlai/Desktop/Winho/Python/**)",
+      "Bash(python3 -c \"import json;d=json.load\\(open\\('info_cache.json'\\)\\);print\\(type\\(d\\)\\);k=list\\(d\\)[:5];print\\(k\\);print\\(json.dumps\\(d[k[0]],ensure_ascii=False\\)[:300]\\) if isinstance\\(d,dict\\) else None\")",
+      "Bash(python3 -c ' *)",
+      "Bash(curl -sL \"https://docs.google.com/spreadsheets/d/1qQDoF0pgohj6NA3Jt3QOptsz_IbNf1PC3buvZO4SCqg/export?format=csv&gid=1023992229\" -o /tmp/concept_seed.csv)",
+      "Read(//tmp/**)",
+      "Bash(python3 -c \"import nicegui;print\\('nicegui',nicegui.__version__\\)\")",
+      "Bash(python3 -c \"import fubon_neo;print\\('fubon_neo ok'\\)\")",
+      "Bash(python3 -c \"import yfinance;print\\('yfinance ok'\\)\")",
+      "Read(//private/tmp/**)",
+      "Bash(awk 'NR<=400')",
+      "Bash(awk '/^class WukongAPI/,/^class FubonMarketData/' data_fetcher.py)",
+      "Bash(awk '/def get_institutional_ranking/,/def get_industry_list/' data_fetcher.py)",
+      "Bash(awk '/^class ThreeLayerEngine/,/^class [A-Z]/' decision_engine.py)",
+      "Bash(awk '/^class DecisionMatrix/,/def [a-z]/' analyzers.py)",
+      "Bash(awk 'NR>1 && /^class /{print NR\": \"$0}' main.py)",
+      "Bash(awk '/class QuickAnalyzer/,/^class [A-Z]/' main.py)",
+      "Bash(python3 -c 'import __TRACKED_VAR__')",
+      "Bash(sed -n '626,634p' main.py)",
+      "Bash(sed -n '1315,1322p' main.py)",
+      "Bash(sed -n '1380,1410p' main.py)",
+      "Bash(python3 -m pip install --quiet nicegui pywebview)",
+      "Bash(python3 -c \"import nicegui, webview; print\\('nicegui', nicegui.__version__, '| webview ok'\\)\")",
+      "Bash(git init *)",
+      "Bash(git add *)",
+      "Bash(git -c user.name=MVPTracker -c user.email=noreply@anthropic.com commit -q -m ' *)"
+    ]
+  }
+}

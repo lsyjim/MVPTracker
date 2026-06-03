@@ -42,6 +42,9 @@ def _load_creds():
 
 def login_and_init():
     """嘗試登入富邦並初始化行情。回 (ok: bool, msg: str)。"""
+    from data_fetcher import DataSourceManager
+    if DataSourceManager.is_fubon_available():   # 已啟用（避免重複登入）
+        return True, "富邦行情已啟用"
     creds = _load_creds()
     if not creds:
         return False, "未提供富邦憑證（設 storage/fubon_credentials.json 或 FUBON_* 環境變數）"
@@ -57,8 +60,8 @@ def login_and_init():
         result = sdk.login(creds["id"], creds["pwd"], cert, creds["cert_pwd"])
         if not getattr(result, "is_success", False):
             return False, f"富邦登入失敗：{getattr(result, 'message', '未知錯誤')}"
-        from data_fetcher import DataSourceManager
-        if DataSourceManager.initialize(sdk):   # 內部會 init_realtime()
+        DataSourceManager.initialize(sdk)   # 內部會 init_realtime()（無回傳值）
+        if DataSourceManager.is_fubon_available():
             return True, "富邦登入成功，行情已啟用"
         return False, "富邦登入成功但行情初始化失敗"
     except Exception as e:

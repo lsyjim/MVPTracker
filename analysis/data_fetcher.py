@@ -1221,12 +1221,37 @@ class DataSourceManager:
                 else:
                     end_str = str(end_date) if end_date else datetime.datetime.now().strftime('%Y-%m-%d')
             
-            return FubonMarketData.get_historical_candles(symbol, start_str, end_str, 'D')
-            
+            return cls._fubon_candles_chunked(symbol, start_str, end_str)
+
         except Exception as e:
             print(f"[DataSourceManager] 富邦 API 取得 {symbol} 失敗: {e}")
             return None
-    
+
+    @classmethod
+    def _fubon_candles_chunked(cls, symbol: str, start_str: str, end_str: str):
+        """富邦(Fugle)單次請求上限 < 1 年；> 364 天時切成多段抓取再合併。"""
+        try:
+            s = datetime.datetime.strptime(start_str, '%Y-%m-%d')
+            e = datetime.datetime.strptime(end_str, '%Y-%m-%d')
+        except Exception:
+            return FubonMarketData.get_historical_candles(symbol, start_str, end_str, 'D')
+        if (e - s).days <= 364:
+            return FubonMarketData.get_historical_candles(symbol, start_str, end_str, 'D')
+        parts = []
+        cur = s
+        while cur < e:
+            seg_end = min(cur + datetime.timedelta(days=364), e)
+            df = FubonMarketData.get_historical_candles(
+                symbol, cur.strftime('%Y-%m-%d'), seg_end.strftime('%Y-%m-%d'), 'D')
+            if df is not None and len(df):
+                parts.append(df)
+            cur = seg_end + datetime.timedelta(days=1)
+        if not parts:
+            return None
+        out = pd.concat(parts)
+        out = out[~out.index.duplicated(keep='last')].sort_index()
+        return out
+
     @classmethod
     def _get_history_yfinance(cls, symbol: str, market: str, start_date, end_date, period: str) -> pd.DataFrame:
         """從 yfinance 取得歷史數據（帶熔斷保護）"""

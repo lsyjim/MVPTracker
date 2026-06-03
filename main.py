@@ -63,17 +63,6 @@ def _add_watch(c):
     ui.notify(f'已加入自選：{c.get("name", "")} {c["code"]}')
 
 
-@ui.page("/")
-def index():
-    theme.apply_global()
-    with ui.element("div").style("max-width:1180px;margin:0 auto;background:var(--bg);border-radius:14px;overflow:hidden;"):
-        _app_bar()
-        with ui.element("div").style("display:flex;"):
-            _rail()
-            content = ui.element("div").style("flex:1;padding:18px;min-width:0;")
-        _render_page(content)
-
-
 def _app_bar():
     with ui.element("div").style("display:flex;align-items:center;gap:10px;padding:13px 18px;background:var(--bar);flex-wrap:wrap;"):
         ui.html('<span style="font-size:16px;font-weight:700;"><span style="color:var(--accent)">MVP</span>Tracker</span>')
@@ -85,57 +74,106 @@ def _app_bar():
         ui.label(src).style("font-size:11px;color:var(--t2);background:var(--elev);border-radius:999px;padding:4px 11px;")
 
 
-def _rail():
-    items = [("overview", "總覽", False), ("quadrant", "象限", True), ("detail", "明細", False), ("watch", "自選", False)]
-    with ui.element("div").style("width:80px;background:var(--rail);padding:14px 0;display:flex;flex-direction:column;gap:6px;"):
-        for key, label, disabled in items:
-            active = state["page"] == key
-            color = "var(--accent)" if active else ("#4A4F57" if disabled else "#7E848C")
-            el = ui.element("div").style(
-                f"display:flex;flex-direction:column;align-items:center;gap:4px;padding:11px 0;color:{color};"
-                f"border-left:3px solid {'var(--accent)' if active else 'transparent'};font-size:10.5px;"
-                f"{'background:rgba(239,159,39,0.10);' if active else ''}{'opacity:0.5;' if disabled else 'cursor:pointer;'}")
-            with el:
-                ui.label(label)
-            if not disabled:
-                el.on("click", lambda e, k=key: _go(k))
+_RAIL_ITEMS = [("overview", "總覽", False), ("quadrant", "象限", True), ("detail", "明細", False), ("watch", "自選", False)]
 
 
-def _go(page, theme_id=None):
-    state["page"] = page
-    state["theme_id"] = theme_id
-    ui.navigate.to("/")
+@ui.page("/")
+def index():
+    from nicegui import run
+    theme.apply_global()
+    price_cells = {}   # {code: (price_label, today_label)}，供自動刷新就地更新
 
+    # ----- 固定外框：app bar（固定）＋ body(rail + content) -----
+    with ui.element("div").style("max-width:1180px;margin:0 auto;background:var(--bg);border-radius:14px;overflow:hidden;"):
+        _app_bar()                               # 固定，不隨換頁重建
+        with ui.element("div").style("display:flex;"):
+            rail_box = ui.element("div").style("width:80px;background:var(--rail);padding:14px 0;display:flex;flex-direction:column;gap:6px;")
+            content_box = ui.element("div").style("flex:1;padding:18px;min-width:0;")
 
-def _render_page(content):
-    with content:
-        if state["page"] == "overview":
-            overview.render(con, on_open_theme=lambda m: _go("detail", m.theme_id),
-                            get_metrics=get_metrics, on_theme_changed=lambda: _go("overview"))
-        elif state["page"] == "detail":
-            from ui import detail, stock_modal
-            rows, _agg = theme_scanner.scan_theme(con, state["theme_id"])
-            _header = {"momentum_5d": _agg["momentum_5d"], "count": len(rows),
-                       "inst_buy_count": round(_agg["inst_ratio"] * len(rows))}
+    def navigate(page, theme_id=None):
+        state["page"] = page
+        state["theme_id"] = theme_id
+        _render_rail()
+        _render_content()
 
-            def open_stock(c, r):
-                stock_modal.open_modal(
-                    c, r,
-                    get_ohlc=lambda code: fetcher.ohlc_for_echart(code)[1],
-                    on_add_watch=_add_watch,
-                    on_report=_show_report)
-            detail.render(con, state["theme_id"],
-                          on_open_stock=open_stock,
-                          on_changed=lambda: _go("detail", state["theme_id"]),
-                          get_row=lambda code: rows.get(code) or detail._mock_row(code),
-                          header=_header)
-            if os.environ.get("MVP_MODAL"):  # 測試 hook：自動開個股彈窗供截圖
-                ui.timer(0.4, lambda: stock_modal.open_modal(
-                    {"code": "2049", "name": "上銀", "in_master": 1},
-                    {"price": 612, "today_pct": 3.0, "rs": 91}), once=True)
-        elif state["page"] == "watch":
-            from ui import watchlist
-            watchlist.render(con)
+    def _render_rail():
+        rail_box.clear()
+        with rail_box:
+            for key, label, disabled in _RAIL_ITEMS:
+                active = state["page"] == key
+                color = "var(--accent)" if active else ("#4A4F57" if disabled else "#7E848C")
+                el = ui.element("div").style(
+                    f"display:flex;flex-direction:column;align-items:center;gap:4px;padding:11px 0;color:{color};"
+                    f"border-left:3px solid {'var(--accent)' if active else 'transparent'};font-size:10.5px;"
+                    f"{'background:rgba(239,159,39,0.10);' if active else ''}{'opacity:0.5;' if disabled else 'cursor:pointer;'}")
+                with el:
+                    ui.label(label)
+                if not disabled:
+                    el.on("click", lambda e, k=key: navigate(k))
+
+    def _render_content():
+        price_cells.clear()
+        content_box.clear()
+        with content_box:
+            if state["page"] == "overview":
+                def do_refresh():
+                    theme_scanner.real_overview(con, force=True)
+                    navigate("overview")
+                overview.render(con, on_open_theme=lambda m: navigate("detail", m.theme_id),
+                                get_metrics=get_metrics, on_theme_changed=lambda: navigate("overview"),
+                                on_refresh=(None if os.environ.get("MVP_MOCK") == "1" else do_refresh))
+            elif state["page"] == "detail":
+                from ui import detail, stock_modal
+                tid = state["theme_id"]
+                if not tid:
+                    ui.label("請從『總覽』點選一個題材以查看明細。").style("color:var(--t3);")
+                    return
+                rows, agg = theme_scanner.scan_theme(con, tid)
+                theme_scanner.refresh_prices(rows)
+                header = {"momentum_5d": agg["momentum_5d"], "count": len(rows),
+                          "inst_buy_count": round(agg["inst_ratio"] * len(rows))}
+
+                def open_stock(c, r):
+                    stock_modal.open_modal(c, r, get_ohlc=lambda code: fetcher.ohlc_for_echart(code)[1],
+                                           on_add_watch=_add_watch, on_report=_show_report)
+
+                def do_refresh():
+                    theme_scanner.scan_theme(con, tid, force=True)
+                    navigate("detail", tid)
+                detail.render(con, tid, on_open_stock=open_stock,
+                              on_changed=lambda: navigate("detail", tid),
+                              get_row=lambda code: rows.get(code) or detail._mock_row(code),
+                              header=header, on_refresh=do_refresh, price_cells=price_cells)
+                if os.environ.get("MVP_MODAL"):
+                    ui.timer(0.4, lambda: stock_modal.open_modal(
+                        {"code": "2049", "name": "上銀", "in_master": 1},
+                        {"price": 612, "today_pct": 3.0, "rs": 91}), once=True)
+            elif state["page"] == "watch":
+                from ui import watchlist
+                watchlist.render(con)
+            elif state["page"] == "quadrant":
+                ui.label("象限圖為 v2 功能（先預留）。").style("color:var(--t3);")
+
+    _render_rail()
+    _render_content()
+
+    # ----- 自動刷新當前股價（僅明細頁；就地更新 price/today，不重繪、不收合分組）-----
+    async def _auto_price_tick():
+        if state["page"] != "detail" or not price_cells:
+            return
+        for code, (pl, tl) in list(price_cells.items()):
+            try:
+                q = await run.io_bound(fetcher.get_quote, code)
+                if q and q.get("price"):
+                    pl.set_text(str(q["price"]))
+                    cp = q.get("change_pct")
+                    if cp:   # 僅非零才更新，避免盤後 0 蓋掉收盤漲幅
+                        tl.set_text(f"{cp:+.1f}%")
+                        tl.classes(replace="mono " + ("up" if cp >= 0 else "down"))
+            except Exception:
+                pass
+    if os.environ.get("MVP_NOREFRESH") != "1":
+        ui.timer(float(os.environ.get("MVP_REFRESH_SEC", "30")), _auto_price_tick)
 
 
 def _loop_already_running() -> bool:

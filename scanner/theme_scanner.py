@@ -59,10 +59,11 @@ def _signal_text(res):
     return "觀察"
 
 
-def analyze_stock_row(code, con=None):
+def analyze_stock_row(code, con=None, force=False):
     """單檔 → 明細列 dict。用 QuickAnalyzer.analyze_stock（grade/RS/recommendation）+ /iibs 法人。
-    每日快取於 scan_cache(kind='row')。"""
-    if con is not None:
+    成功結果每日快取於 scan_cache(kind='row')；force=True 強制重算。
+    失敗（取不到資料）回暫缺列但**不快取**，避免整天卡 0。"""
+    if con is not None and not force:
         cached, ts = cache.get(con, code, "row")
         if cached and cache.is_today(ts):
             return cached
@@ -70,24 +71,44 @@ def analyze_stock_row(code, con=None):
     res = QuickAnalyzer.analyze_stock(code, "台股")
     chip = institutional.chip_flow(code, con)
     if not res:
-        row = {"price": 0, "today_pct": 0, "d5_pct": 0, "rs": 50, "inst": chip.get("total", 0), "signal": "觀察"}
-    else:
-        rs = res.get("relative_strength", {}).get("rs_score", 50)
-        d5 = res.get("relative_strength", {}).get("rs_5d", 0)
-        row = {
-            "price": res.get("current_price", 0),
-            "today_pct": res.get("price_change_pct", 0),
-            "d5_pct": d5,
-            "rs": round(rs),
-            "inst": chip.get("total", 0),
-            "signal": _signal_text(res),
-        }
+        # 取不到資料：回暫缺列、不快取（下次會重試）
+        return {"price": 0, "today_pct": 0, "d5_pct": 0, "rs": 50,
+                "inst": chip.get("total", 0), "signal": "資料暫缺", "_ok": False}
+    rs = res.get("relative_strength", {}).get("rs_score", 50)
+    d5 = res.get("relative_strength", {}).get("rs_5d", 0)
+    row = {
+        "price": res.get("current_price", 0),
+        "today_pct": res.get("price_change_pct", 0),
+        "d5_pct": d5,
+        "rs": round(rs),
+        "inst": chip.get("total", 0),
+        "signal": _signal_text(res),
+        "_ok": True,
+    }
     if con is not None:
         cache.put(con, code, "row", row)
     return row
 
 
+def refresh_prices(rows):
+    """盤中輕量刷新：只更新 price / today_pct（不重算 grade/RS）。
+    收盤後報價的 change_pct 常為 0，會蓋掉當日收盤漲幅，故 cp 為 0 時不覆寫 today_pct。"""
+    from data import fetcher
+    for code, row in rows.items():
+        try:
+            q = fetcher.get_quote(code)
+            if q and q.get("price"):
+                row["price"] = q["price"]
+                cp = q.get("change_pct")
+                if cp:   # 僅在有非零漲跌時更新（避免盤後 0 蓋掉收盤值）
+                    row["today_pct"] = cp
+        except Exception:
+            pass
+    return rows
+
+
 def aggregate_theme(rows):
+    rows = [r for r in rows if r.get("_ok", True)]  # 只聚合取得到資料的成分股
     if not rows:
         return {"momentum_5d": 0, "up_count": 0, "down_count": 0, "inst_ratio": 0, "strong_ratio": 0, "inst_net": 0}
     moms = [r["d5_pct"] for r in rows]
@@ -110,19 +131,19 @@ def _all_codes(con, theme_id):
     return cons
 
 
-def scan_theme(con, theme_id):
-    """題材所有成分股逐檔分析 → {code: row} + 聚合。"""
+def scan_theme(con, theme_id, force=False):
+    """題材所有成分股逐檔分析 → {code: row} + 聚合。force=True 略過快取重算。"""
     cons = _all_codes(con, theme_id)
-    rows = {c["code"]: analyze_stock_row(c["code"], con) for c in cons}
+    rows = {c["code"]: analyze_stock_row(c["code"], con, force=force) for c in cons}
     agg = aggregate_theme(list(rows.values()))
     return rows, agg
 
 
-def real_overview(con):
+def real_overview(con, force=False):
     out = []
     for t in store.list_themes(con):
         cons = _all_codes(con, t["id"])
-        rows = [analyze_stock_row(c["code"], con) for c in cons]
+        rows = [analyze_stock_row(c["code"], con, force=force) for c in cons]
         agg = aggregate_theme(rows)
         out.append(ThemeMetrics(theme_id=t["id"], key=t["key"], name=t["name"],
                                 momentum_5d=round(agg["momentum_5d"], 1), inst_net=agg["inst_net"],

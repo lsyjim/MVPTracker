@@ -4,7 +4,7 @@ from ui import components
 from concept import store
 
 
-def render(con, on_open_theme, get_metrics, on_theme_changed):
+def render(con, on_open_theme, get_metrics, on_theme_changed, on_refresh=None):
     """總覽頁。get_metrics() → List[ThemeMetrics]；on_open_theme(theme_metrics)。"""
     metrics = get_metrics()
     if not metrics:
@@ -22,6 +22,8 @@ def render(con, on_open_theme, get_metrics, on_theme_changed):
     # section header
     with ui.element("div").style("display:flex;align-items:center;justify-content:space-between;margin:6px 0 12px;"):
         ui.label("題材熱度 ＋ 法人").style("font-size:13px;color:#C9CDD2;font-weight:600;")
+        if on_refresh:
+            ui.button("🔄 重新掃描", on_click=on_refresh).props("flat dense no-caps").style("color:var(--t2);font-size:12px;")
     # heatmap
     with ui.element("div").style("display:flex;flex-wrap:wrap;gap:7px;"):
         for m in metrics:

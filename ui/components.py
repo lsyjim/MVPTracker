@@ -31,7 +31,9 @@ def heat_tile(m, on_click):
         ui.element("div").style("position:absolute;left:0;bottom:0;height:5px;width:100%;background:rgba(255,255,255,0.06);")
         ui.element("div").style(f"position:absolute;left:0;bottom:0;height:5px;{fill}")
         if m.diverge:
-            ui.label("⚠").style("position:absolute;top:6px;right:8px;font-size:12px;")
+            ui.html('<span title="背離：5日動能與法人買賣超方向相反（例如股價漲但法人賣超，或股價跌但法人買超），'
+                    '代表價格與籌碼不一致，須留意。" '
+                    'style="position:absolute;top:6px;right:8px;font-size:12px;cursor:help;">⚠</span>')
     return tile
 
 

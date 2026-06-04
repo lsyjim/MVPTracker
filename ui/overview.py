@@ -2,6 +2,7 @@
 from nicegui import ui
 from ui import components
 from concept import store
+from data import fetcher
 
 
 def render(con, on_open_theme, get_metrics, on_theme_changed, on_refresh=None):
@@ -14,11 +15,18 @@ def render(con, on_open_theme, get_metrics, on_theme_changed, on_refresh=None):
     strongest = max(metrics, key=lambda m: m.momentum_5d)
     most_inst = max(metrics, key=lambda m: m.inst_net)
     diverge_n = sum(1 for m in metrics if m.diverge)
+    idx = fetcher.get_index()
+    if idx:
+        idx_val = f'{idx["value"]:,.0f}'
+        idx_sub = f'{idx["change_pct"]:+.2f}%'
+        idx_cls = "up" if idx["change_pct"] >= 0 else "down"
+    else:
+        idx_val, idx_sub, idx_cls = "—", "取得中…", "muted"
     with ui.element("div").style("display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:18px;"):
         components.kpi_card("動能最強", strongest.name, f"5日 +{strongest.momentum_5d:.1f}%", "up")
         components.kpi_card("法人最買超", most_inst.name, "外資+投信 淨買", "gold")
-        components.kpi_card("加權指數", "—", "接後端後顯示", "muted")
-        components.kpi_card("背離警示", f"{diverge_n} 檔", "價量籌不一致", "muted")
+        components.kpi_card("加權指數", idx_val, idx_sub, idx_cls)
+        components.kpi_card("背離警示", f"{diverge_n} 個題材", "動能與法人方向相反", "muted")
     # section header
     with ui.element("div").style("display:flex;align-items:center;justify-content:space-between;margin:6px 0 12px;"):
         ui.label("題材熱度 ＋ 法人").style("font-size:13px;color:#C9CDD2;font-weight:600;")

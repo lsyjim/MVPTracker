@@ -30,6 +30,12 @@
       "runtimeExecutable": "env",
       "runtimeArgs": ["MVP_WEB=1", "MVP_PORT=8204", "MVP_PAGE=watch", "python3", "main.py"],
       "port": 8204
+    },
+    {
+      "name": "mvp-mock",
+      "runtimeExecutable": "env",
+      "runtimeArgs": ["MVP_WEB=1", "MVP_PORT=8205", "MVP_MOCK=1", "python3", "main.py"],
+      "port": 8205
     }
   ]
 }

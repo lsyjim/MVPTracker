@@ -1162,8 +1162,12 @@ class DataSourceManager:
         if _batch is not None and not _batch.empty:
             return _batch
 
-        # 台股優先使用富邦 API
-        if market == "台股" and cls.is_fubon_available():
+        # 富邦(Fugle)單次歷史請求上限 < 1 年；> 1 年的範圍直接走 yfinance，
+        # 避免 400/429 並避免因該失敗誤觸富邦暫時熔斷。
+        _long_range = cls._range_days(start_date, end_date, period) > 364
+
+        # 台股優先使用富邦 API（僅 <= 1 年範圍）
+        if market == "台股" and cls.is_fubon_available() and not _long_range:
             result = cls._get_history_fubon(symbol, start_date, end_date, period)
             if result is not None and not result.empty:
                 source_used = cls.SOURCE_FUBON
@@ -1221,36 +1225,25 @@ class DataSourceManager:
                 else:
                     end_str = str(end_date) if end_date else datetime.datetime.now().strftime('%Y-%m-%d')
             
-            return cls._fubon_candles_chunked(symbol, start_str, end_str)
+            return FubonMarketData.get_historical_candles(symbol, start_str, end_str, 'D')
 
         except Exception as e:
             print(f"[DataSourceManager] 富邦 API 取得 {symbol} 失敗: {e}")
             return None
 
     @classmethod
-    def _fubon_candles_chunked(cls, symbol: str, start_str: str, end_str: str):
-        """富邦(Fugle)單次請求上限 < 1 年；> 364 天時切成多段抓取再合併。"""
+    def _range_days(cls, start_date, end_date, period) -> int:
+        """估算請求的天數跨度（用於決定是否超過富邦單次上限）。"""
+        pmap = {'5d': 5, '1mo': 30, '3mo': 90, '6mo': 180, '1y': 365, '2y': 730, '5y': 1825}
+        if period:
+            return pmap.get(period, 180)
         try:
-            s = datetime.datetime.strptime(start_str, '%Y-%m-%d')
-            e = datetime.datetime.strptime(end_str, '%Y-%m-%d')
+            s = start_date if isinstance(start_date, datetime.datetime) else datetime.datetime.strptime(str(start_date)[:10], '%Y-%m-%d')
+            e = end_date if isinstance(end_date, datetime.datetime) else (
+                datetime.datetime.strptime(str(end_date)[:10], '%Y-%m-%d') if end_date else datetime.datetime.now())
+            return (e - s).days
         except Exception:
-            return FubonMarketData.get_historical_candles(symbol, start_str, end_str, 'D')
-        if (e - s).days <= 364:
-            return FubonMarketData.get_historical_candles(symbol, start_str, end_str, 'D')
-        parts = []
-        cur = s
-        while cur < e:
-            seg_end = min(cur + datetime.timedelta(days=364), e)
-            df = FubonMarketData.get_historical_candles(
-                symbol, cur.strftime('%Y-%m-%d'), seg_end.strftime('%Y-%m-%d'), 'D')
-            if df is not None and len(df):
-                parts.append(df)
-            cur = seg_end + datetime.timedelta(days=1)
-        if not parts:
-            return None
-        out = pd.concat(parts)
-        out = out[~out.index.duplicated(keep='last')].sort_index()
-        return out
+            return 180
 
     @classmethod
     def _get_history_yfinance(cls, symbol: str, market: str, start_date, end_date, period: str) -> pd.DataFrame:

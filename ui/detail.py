@@ -22,15 +22,16 @@ def render(con, theme_id, on_open_stock, on_changed, get_row=_mock_row, header=N
         return
     ui.html(f'<div style="font-size:12px;color:var(--t2);margin-bottom:12px;">題材總覽 › <b style="color:var(--text)">{t["name"]}</b></div>')
     # 題材標頭（header 由 scanner 聚合提供；無則顯示占位）
-    with ui.element("div").style("display:flex;align-items:center;gap:18px;background:var(--card);border-radius:12px;padding:14px 18px;margin-bottom:16px;"):
+    with ui.element("div").style("display:flex;align-items:center;gap:18px;background:var(--card);border-radius:12px;padding:14px 18px;margin-bottom:16px;width:100%;box-sizing:border-box;"):
         ui.label(t["name"]).style("font-size:18px;font-weight:700;")
         if header:
             mom = header.get("momentum_5d", 0)
             mom_cls = "up" if mom >= 0 else "down"
             buy_n = header.get("inst_buy_count", 0)
             cnt = header.get("count", 0)
+            avail = header.get("inst_avail_count", cnt)
             ui.html(f'<span style="font-size:12px;color:var(--t2)">5日動能<b class="{mom_cls}" style="font-size:15px;display:block;font-family:var(--mono)">{mom:+.1f}%</b></span>')
-            ui.html(f'<span style="font-size:12px;color:var(--t2)">法人買超<b class="gold" style="font-size:15px;display:block;font-family:var(--mono)">{buy_n}/{cnt}</b></span>')
+            ui.html(f'<span title="近5日法人買超家數 / 有法人資料家數" style="font-size:12px;color:var(--t2)">法人買超(5日)<b class="gold" style="font-size:15px;display:block;font-family:var(--mono)">{buy_n}/{avail}</b></span>')
             ui.html(f'<span style="font-size:12px;color:var(--t2)">家數<b style="font-size:15px;display:block;font-family:var(--mono)">{cnt}</b></span>')
         else:
             ui.html('<span style="font-size:12px;color:var(--t2)">5日動能<b class="muted" style="font-size:15px;display:block;font-family:var(--mono)">—</b></span>')
@@ -47,7 +48,7 @@ def render(con, theme_id, on_open_stock, on_changed, get_row=_mock_row, header=N
 
 def _group(con, theme_id, sub_id, title, on_open_stock, on_changed, get_row, open_default, price_cells=None):
     cons = store.list_constituents(con, theme_id, sub_id)
-    with ui.element("div").style("background:var(--card);border-radius:12px;margin-bottom:10px;overflow:hidden;"):
+    with ui.element("div").style("background:var(--card);border-radius:12px;margin-bottom:10px;overflow:hidden;width:100%;box-sizing:border-box;"):
         opened = {"v": open_default}
         head = ui.element("div").style("display:flex;align-items:center;gap:12px;padding:12px 16px;cursor:pointer;")
         with head:
@@ -74,7 +75,7 @@ _GRID = "display:grid;grid-template-columns:24px 1.6fr 0.9fr 0.8fr 0.8fr 0.6fr 1
 def _header_row():
     # （序號）代號/名稱=左；現價/今日/5日/RS/法人=右；訊號=左
     cols = [("", "left"), ("代號 / 名稱", "left"), ("現價", "right"), ("今日", "right"),
-            ("5日", "right"), ("RS", "right"), ("法人(張)", "right"), ("訊號", "left")]
+            ("5日", "right"), ("RS", "right"), ("法人5日(張)", "right"), ("訊號", "left")]
     with ui.element("div").style(_GRID + "padding:9px 16px;font-size:11px;color:var(--t3);"):
         for text, align in cols:
             ui.label(text).style(f"text-align:{align};")
@@ -86,7 +87,11 @@ _SHORT = {"grade_A": "A 主攻", "grade_B": "B 追蹤", "grade_C": "觀察", "gr
 def _stock_row(idx, c, r, on_open_stock, price_cells=None):
     dc = "up" if r["today_pct"] >= 0 else "down"
     fc = "up" if r["d5_pct"] >= 0 else "down"
-    ic = "down" if r["inst"] < 0 else "gold"
+    inst = r.get("inst")
+    if inst is None:
+        inst_txt, ic = "—", "muted"      # 法人資料暫缺
+    else:
+        inst_txt, ic = f"{inst:+,}", ("down" if inst < 0 else "gold")
     rsc = "gold" if r["rs"] >= 80 else "muted"
     sig = r["signal"]
     tag = theme.grade_tag(sig) or "grade_C"
@@ -102,7 +107,7 @@ def _stock_row(idx, c, r, on_open_stock, price_cells=None):
         today_label = ui.label(f'{r["today_pct"]:+.1f}%').classes(f"mono {dc}").style("text-align:right;")
         ui.label(f'{r["d5_pct"]:+.1f}%').classes(f"mono {fc}").style("text-align:right;")
         ui.label(f'{r["rs"]}').classes(f"mono {rsc}").style("text-align:right;")
-        ui.label(f'{r["inst"]:+,}').classes(f"mono {ic}").style("text-align:right;")
+        ui.label(inst_txt).classes(f"mono {ic}").style("text-align:right;")
         # 短標籤 badge（完整訊號滑鼠移上顯示）
         ui.html(f'<span title="{sig}" style="font-size:12px;padding:4px 10px;border-radius:7px;font-weight:600;'
                 f'white-space:nowrap;background:{bg};color:{fg}">{label}</span>')

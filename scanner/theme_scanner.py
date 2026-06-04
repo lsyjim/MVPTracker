@@ -72,10 +72,12 @@ def analyze_stock_row(code, con=None, force=False):
     from quick_analyzer import QuickAnalyzer
     res = QuickAnalyzer.analyze_stock(code, "台股")
     chip = institutional.chip_flow(code, con)
+    inst_ok = bool(chip.get("available"))
+    inst_val = chip.get("total_5d") if inst_ok else None   # 5 日累計（與 5 日動能對齊）；暫缺為 None
     if not res:
         # 取不到資料：回暫缺列、不快取（下次會重試）
         return {"price": 0, "today_pct": 0, "d5_pct": 0, "rs": 50,
-                "inst": chip.get("total", 0), "signal": "資料暫缺", "_ok": False}
+                "inst": inst_val, "inst_ok": inst_ok, "signal": "資料暫缺", "_ok": False}
     rs = res.get("relative_strength", {}).get("rs_score", 50)
     d5 = res.get("relative_strength", {}).get("rs_5d", 0)
     row = {
@@ -83,7 +85,8 @@ def analyze_stock_row(code, con=None, force=False):
         "today_pct": res.get("price_change_pct", 0),
         "d5_pct": d5,
         "rs": round(rs),
-        "inst": chip.get("total", 0),
+        "inst": inst_val,
+        "inst_ok": inst_ok,
         "signal": _signal_text(res),
         "_ok": True,
     }
@@ -112,18 +115,24 @@ def refresh_prices(rows):
 def aggregate_theme(rows):
     rows = [r for r in rows if r.get("_ok", True)]  # 只聚合取得到資料的成分股
     if not rows:
-        return {"momentum_5d": 0, "today_pct": 0, "up_count": 0, "down_count": 0, "inst_ratio": 0, "strong_ratio": 0, "inst_net": 0}
+        return {"momentum_5d": 0, "today_pct": 0, "up_count": 0, "down_count": 0, "inst_ratio": 0,
+                "inst_buy_count": 0, "inst_avail_count": 0, "strong_ratio": 0, "inst_net": 0}
     moms = [r["d5_pct"] for r in rows]
-    nets = {str(i): r["inst"] for i, r in enumerate(rows)}
+    # 法人維度只計入「有法人資料」的個股（暫缺者排除，避免被當 0 拉低占比）
+    nets = {str(i): r["inst"] for i, r in enumerate(rows) if r.get("inst_ok", True) and r.get("inst") is not None}
+    inst_ratio = institutional.theme_inst_ratio(nets)
+    inst_net = round((inst_ratio * 2 - 1) * 100) if nets else 0   # 無法人資料 → 中性 0，不畫成賣超
     strong = sum(1 for r in rows if uitheme.grade_tag(r["signal"]) in ("grade_A", "grade_B"))
     return {
         "momentum_5d": statistics.mean(moms),
         "today_pct": statistics.mean([r["today_pct"] for r in rows]),
         "up_count": sum(1 for r in rows if r["today_pct"] > 0),
         "down_count": sum(1 for r in rows if r["today_pct"] < 0),
-        "inst_ratio": institutional.theme_inst_ratio(nets),
+        "inst_ratio": inst_ratio,
+        "inst_buy_count": sum(1 for v in nets.values() if v > 0),
+        "inst_avail_count": len(nets),
         "strong_ratio": strong / len(rows),
-        "inst_net": round((institutional.theme_inst_ratio(nets) * 2 - 1) * 100),  # -100..100 給熱圖
+        "inst_net": inst_net,  # -100..100 給熱圖
     }
 
 

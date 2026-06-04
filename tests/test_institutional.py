@@ -15,6 +15,9 @@ def test_summarize_latest_and_streak():
     assert s["total"] == 1100 and s["foreign_net"] == 1000 and s["trust_net"] == 200
     assert s["foreign_consecutive_days"] == 2   # 連 2 日外資買超
     assert s["total"] > 0
+    # 5 日累計 = 全部 3 筆 total 相加（樣本不足 5 筆時取現有）
+    assert s["total_5d"] == 1100 + 550 + (-20)
+    assert s["date"] == "2026-05-30"
 
 
 def test_summarize_empty():

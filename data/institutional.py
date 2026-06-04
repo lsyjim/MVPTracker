@@ -25,19 +25,22 @@ def _streak(items, key):
 
 
 def summarize_iibs(data: dict) -> dict:
+    """單位：張（API 已是張數，與 UI 一致，免換算）。total = 三大法人合計淨買超。"""
     items = sorted(data.get("iibs", []), key=lambda x: x.get("inputDate", ""), reverse=True)
     if not items:
         return {"available": False}
     latest = items[0]
+    total_5d = sum((it.get("total", 0) or 0) for it in items[:5])  # 近 5 個交易日累計（與 5 日動能對齊）
     return {
         "available": True,
         "foreign_net": latest.get("foreignInvestorsBuySell", 0) or 0,
         "trust_net": latest.get("investmentTrustBuySell", 0) or 0,
         "dealer_net": latest.get("dealerBuySell", 0) or 0,
-        "total": latest.get("total", 0) or 0,
+        "total": latest.get("total", 0) or 0,           # 最新單日合計
+        "total_5d": total_5d,                            # 近 5 日累計合計
         "foreign_consecutive_days": _streak(items, "foreignInvestorsBuySell"),
         "trust_consecutive_days": _streak(items, "investmentTrustBuySell"),
-        "date": latest.get("inputDate", ""),
+        "date": latest.get("inputDate", ""),             # 法人資料實際日期（盤後落後）
     }
 
 
@@ -60,9 +63,19 @@ def chip_flow(code, con=None):
 
 
 def theme_inst_ratio(code_to_net: dict) -> float:
+    """買超家數占比；傳入的 dict 應只含『有法人資料』的個股（暫缺者請先排除）。"""
     if not code_to_net:
         return 0.0
     return sum(1 for v in code_to_net.values() if v > 0) / len(code_to_net)
+
+
+def latest_date(code="2330"):
+    """取一檔參考股的法人資料實際日期（'YYYY-MM-DD'），給 header 顯示『截至 X』。"""
+    try:
+        cf = chip_flow(code)
+        return cf.get("date") if cf.get("available") else None
+    except Exception:
+        return None
 
 
 def intraday_force(code):

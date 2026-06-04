@@ -21,6 +21,11 @@ from data import fubon_login
 FUBON_OK, FUBON_MSG = fubon_login.login_and_init()
 print(f"[Fubon] {FUBON_MSG}")
 
+# 法人資料實際日期（盤後落後資料，非當日）；取一檔參考股一次
+from data import institutional
+_inst_date = institutional.latest_date()   # 'YYYY-MM-DD' 或 None
+INST_LABEL = f"法人 截至 {_inst_date[5:].replace('-', '/')}" if _inst_date else "法人(盤後)"
+
 # 測試/除錯 hook：MVP_DETAIL=<theme_id> 停在明細頁；MVP_PAGE=<page> 停在指定頁
 _DT = os.environ.get("MVP_DETAIL")
 _PG = os.environ.get("MVP_PAGE") or ("detail" if _DT else "overview")
@@ -79,7 +84,7 @@ def index():
             n = len(store.list_themes(con))
             for txt in (f"concept_map {n}類", "回看 5日"):
                 ui.label(txt).style("font-size:11px;color:var(--t2);background:var(--elev);border-radius:999px;padding:4px 11px;")
-            ui.label("法人:當日 /iibs").classes("gold").style("font-size:11px;background:var(--elev);border-radius:999px;padding:4px 11px;")
+            ui.label(INST_LABEL).classes("gold").style("font-size:11px;background:var(--elev);border-radius:999px;padding:4px 11px;")
             src = "富邦即時" if FUBON_OK else "Yahoo(fallback)"
             ui.label(src).style("font-size:11px;color:var(--t2);background:var(--elev);border-radius:999px;padding:4px 11px;")
 
@@ -89,7 +94,7 @@ def index():
         nav_box = ui.column().style("gap:6px;padding:14px 0;width:100%;align-items:stretch;")
 
     # ----- 單一滿版內容區（只有它會換頁/捲動）-----
-    content_box = ui.column().classes("w-full").style("padding:18px;gap:0;min-width:0;")
+    content_box = ui.column().classes("w-full").style("padding:18px;gap:0;min-width:0;align-items:stretch;")
 
     def navigate(page, theme_id=None):
         state["page"] = page
@@ -178,7 +183,7 @@ def index():
                 rows, agg = theme_scanner.scan_theme(con, tid)
                 theme_scanner.refresh_prices(rows)
                 header = {"momentum_5d": agg["momentum_5d"], "count": len(rows),
-                          "inst_buy_count": round(agg["inst_ratio"] * len(rows))}
+                          "inst_buy_count": agg["inst_buy_count"], "inst_avail_count": agg["inst_avail_count"]}
 
                 def do_refresh():
                     theme_scanner.scan_theme(con, tid, force=True)

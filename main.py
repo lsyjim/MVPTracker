@@ -22,18 +22,8 @@ FUBON_OK, FUBON_MSG = fubon_login.login_and_init()
 print(f"[Fubon] {FUBON_MSG}")
 
 # 測試/除錯 hook：MVP_DETAIL=<theme_id> 停在明細頁；MVP_PAGE=<page> 停在指定頁
-_dt = os.environ.get("MVP_DETAIL")
-_pg = os.environ.get("MVP_PAGE") or ("detail" if _dt else "overview")
-state = {"page": _pg, "theme_id": int(_dt) if _dt else None}
-
-
-def get_metrics():
-    # 真資料：逐檔 QuickAnalyzer + /iibs 法人，聚合題材層（每日 row 快取）。
-    # 註：冷啟動會逐檔掃描全部成分股；富邦登入時最快，未登入走 yfinance 較慢。
-    # 設 MVP_MOCK=1 可改用假資料（離線/快速 demo）。
-    if os.environ.get("MVP_MOCK") == "1":
-        return theme_scanner.mock_overview()
-    return theme_scanner.real_overview(con)
+_DT = os.environ.get("MVP_DETAIL")
+_PG = os.environ.get("MVP_PAGE") or ("detail" if _DT else "overview")
 
 
 def _show_report(c):
@@ -66,67 +56,121 @@ def _add_watch(c):
     ui.notify(f'已加入自選：{c.get("name", "")} {c["code"]}')
 
 
-def _app_bar():
-    with ui.element("div").style("display:flex;align-items:center;gap:10px;padding:13px 18px;background:var(--bar);flex-wrap:wrap;"):
-        ui.html('<span style="font-size:16px;font-weight:700;"><span style="color:var(--accent)">MVP</span>Tracker</span>')
-        n = len(store.list_themes(con))
-        for txt in (f"concept_map {n}類", "回看 5日"):
-            ui.label(txt).style("font-size:11px;color:var(--t2);background:var(--elev);border-radius:999px;padding:4px 11px;")
-        ui.label("法人:接後端後顯示").classes("gold").style("font-size:11px;background:var(--elev);border-radius:999px;padding:4px 11px;")
-        src = "富邦即時" if FUBON_OK else "Yahoo(fallback)"
-        ui.label(src).style("font-size:11px;color:var(--t2);background:var(--elev);border-radius:999px;padding:4px 11px;")
-
-
-_RAIL_ITEMS = [("overview", "總覽", False), ("quadrant", "象限", True), ("detail", "明細", False), ("watch", "自選", False)]
+_RAIL_ITEMS = [("overview", "總覽", False), ("ranking", "排行", False),
+               ("quadrant", "象限", True), ("detail", "明細", False), ("watch", "自選", False)]
 
 
 @ui.page("/")
 def index():
     from nicegui import run
+    state = {"page": _PG, "theme_id": int(_DT) if _DT else None}   # 每個 client 各自的頁面狀態
     theme.apply_global()
+    # app shell 容器底色（Quasar layout/page）
+    ui.add_css("""
+      .q-layout, .q-page-container, .q-page { background: var(--bg) !important; }
+      .nicegui-content { padding: 0; gap: 0; }
+    """)
     price_cells = {}   # {code: (price_label, today_label)}，供自動刷新就地更新
 
-    # ----- 固定外框：app bar（固定）＋ body(rail + content) -----
-    with ui.element("div").style("max-width:1180px;margin:0 auto;background:var(--bg);border-radius:14px;overflow:hidden;"):
-        _app_bar()                               # 固定，不隨換頁重建
-        with ui.element("div").style("display:flex;"):
-            rail_box = ui.element("div").style("width:80px;background:var(--rail);padding:14px 0;display:flex;flex-direction:column;gap:6px;")
-            content_box = ui.element("div").style("flex:1;padding:18px;min-width:0;")
+    # ----- 固定 HEADER -----
+    with ui.header(fixed=True).style("background:var(--bar);border-bottom:0.5px solid var(--line);padding:10px 18px;"):
+        with ui.row().style("align-items:center;gap:10px;width:100%;flex-wrap:wrap;"):
+            ui.html('<span style="font-size:16px;font-weight:700;"><span style="color:var(--accent)">MVP</span>Tracker</span>')
+            n = len(store.list_themes(con))
+            for txt in (f"concept_map {n}類", "回看 5日"):
+                ui.label(txt).style("font-size:11px;color:var(--t2);background:var(--elev);border-radius:999px;padding:4px 11px;")
+            ui.label("法人:當日 /iibs").classes("gold").style("font-size:11px;background:var(--elev);border-radius:999px;padding:4px 11px;")
+            src = "富邦即時" if FUBON_OK else "Yahoo(fallback)"
+            ui.label(src).style("font-size:11px;color:var(--t2);background:var(--elev);border-radius:999px;padding:4px 11px;")
+
+    # ----- 固定 LEFT DRAWER -----
+    drawer = ui.left_drawer(fixed=True, bordered=True).props("width=104 breakpoint=0").style("background:var(--rail);padding:0;")
+    with drawer:
+        nav_box = ui.column().style("gap:6px;padding:14px 0;width:100%;align-items:stretch;")
+
+    # ----- 單一滿版內容區（只有它會換頁/捲動）-----
+    content_box = ui.column().classes("w-full").style("padding:18px;gap:0;min-width:0;")
 
     def navigate(page, theme_id=None):
         state["page"] = page
         state["theme_id"] = theme_id
-        _render_rail()
+        _render_nav()
         _render_content()
 
-    def _render_rail():
-        rail_box.clear()
-        with rail_box:
+    def _render_nav():
+        nav_box.clear()
+        with nav_box:
             for key, label, disabled in _RAIL_ITEMS:
                 active = state["page"] == key
                 color = "var(--accent)" if active else ("#4A4F57" if disabled else "#7E848C")
                 el = ui.element("div").style(
                     f"display:flex;flex-direction:column;align-items:center;gap:4px;padding:11px 0;color:{color};"
-                    f"border-left:3px solid {'var(--accent)' if active else 'transparent'};font-size:10.5px;"
+                    f"border-left:3px solid {'var(--accent)' if active else 'transparent'};font-size:11px;"
                     f"{'background:rgba(239,159,39,0.10);' if active else ''}{'opacity:0.5;' if disabled else 'cursor:pointer;'}")
                 with el:
                     ui.label(label)
                 if not disabled:
                     el.on("click", lambda e, k=key: navigate(k))
 
-    def _render_content():
-        price_cells.clear()
+    def _open_stock(c, r):
+        from ui import stock_modal
+        stock_modal.open_modal(c, r, get_ohlc=lambda code: fetcher.ohlc_for_echart(code)[1],
+                               on_add_watch=_add_watch, on_report=_show_report)
+
+    async def _scan_with_progress(force):
+        """冷啟動/重掃：顯示「掃描中 X/總數」進度，掃描在背景執行緒跑完再畫熱圖。"""
+        codes = theme_scanner.all_constituent_codes(con)
+        prog = {"done": 0, "total": len(codes)}
         content_box.clear()
         with content_box:
-            if state["page"] == "overview":
-                def do_refresh():
-                    theme_scanner.real_overview(con, force=True)
-                    navigate("overview")
+            with ui.column().classes("w-full").style("align-items:center;padding:48px;gap:16px;"):
+                ui.spinner(size="lg", color="amber")
+                lbl = ui.label(f"掃描中… 0/{prog['total']}（完成後當日不再重掃）").style("color:var(--t2);")
+                bar = ui.linear_progress(value=0, show_value=False, color="amber").style("width:300px;")
+
+        def _upd():
+            lbl.set_text(f"掃描中… {prog['done']}/{prog['total']}（完成後當日不再重掃）")
+            bar.set_value(prog["done"] / max(1, prog["total"]))
+        pt = ui.timer(0.3, _upd)
+        metrics = await run.io_bound(theme_scanner.real_overview, con, force, lambda d, t: prog.update(done=d))
+        pt.cancel()
+        _draw_overview(metrics)
+
+    def _draw_overview(metrics):
+        content_box.clear()
+        with content_box:
+            overview.render(con, on_open_theme=lambda m: navigate("detail", m.theme_id),
+                            get_metrics=lambda: metrics, on_theme_changed=lambda: navigate("overview"),
+                            on_refresh=lambda: ui.timer(0.01, lambda: _scan_with_progress(True), once=True))
+
+    async def _render_overview():
+        content_box.clear()
+        if os.environ.get("MVP_MOCK") == "1":
+            with content_box:
                 overview.render(con, on_open_theme=lambda m: navigate("detail", m.theme_id),
-                                get_metrics=get_metrics, on_theme_changed=lambda: navigate("overview"),
-                                on_refresh=(None if os.environ.get("MVP_MOCK") == "1" else do_refresh))
+                                get_metrics=theme_scanner.mock_overview,
+                                on_theme_changed=lambda: navigate("overview"), on_refresh=None)
+            return
+        from data import cache as _cache
+        codes = theme_scanner.all_constituent_codes(con)
+        need = [c for c in codes if not (lambda rt: rt[0] and _cache.is_today(rt[1]))(_cache.get(con, c, "row"))]
+        if not need:                       # 當日全快取 → 直接畫（快）
+            _draw_overview(theme_scanner.real_overview(con))
+        else:                              # 冷啟動 → 進度條
+            await _scan_with_progress(force=False)
+
+    def _render_content():
+        price_cells.clear()
+        if state["page"] == "overview":
+            ui.timer(0.01, _render_overview, once=True)   # 非同步（含進度）
+            return
+        content_box.clear()
+        with content_box:
+            if state["page"] == "ranking":
+                from ui import ranking
+                ranking.render(con, on_open_theme=lambda tid: navigate("detail", tid), on_open_stock=_open_stock)
             elif state["page"] == "detail":
-                from ui import detail, stock_modal
+                from ui import detail
                 tid = state["theme_id"]
                 if not tid:
                     ui.label("請從『總覽』點選一個題材以查看明細。").style("color:var(--t3);")
@@ -136,18 +180,15 @@ def index():
                 header = {"momentum_5d": agg["momentum_5d"], "count": len(rows),
                           "inst_buy_count": round(agg["inst_ratio"] * len(rows))}
 
-                def open_stock(c, r):
-                    stock_modal.open_modal(c, r, get_ohlc=lambda code: fetcher.ohlc_for_echart(code)[1],
-                                           on_add_watch=_add_watch, on_report=_show_report)
-
                 def do_refresh():
                     theme_scanner.scan_theme(con, tid, force=True)
                     navigate("detail", tid)
-                detail.render(con, tid, on_open_stock=open_stock,
+                detail.render(con, tid, on_open_stock=_open_stock,
                               on_changed=lambda: navigate("detail", tid),
                               get_row=lambda code: rows.get(code) or detail._mock_row(code),
                               header=header, on_refresh=do_refresh, price_cells=price_cells)
                 if os.environ.get("MVP_MODAL"):
+                    from ui import stock_modal
                     ui.timer(0.4, lambda: stock_modal.open_modal(
                         {"code": "2049", "name": "上銀", "in_master": 1},
                         {"price": 612, "today_pct": 3.0, "rs": 91}), once=True)
@@ -157,7 +198,7 @@ def index():
             elif state["page"] == "quadrant":
                 ui.label("象限圖為 v2 功能（先預留）。").style("color:var(--t3);")
 
-    _render_rail()
+    _render_nav()
     _render_content()
 
     # ----- 自動刷新當前股價（僅明細頁；就地更新 price/today，不重繪、不收合分組）-----

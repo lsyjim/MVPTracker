@@ -21,6 +21,7 @@ class ThemeMetrics:
     strong_ratio: float = 0.0
     signal: str = ""
     diverge: bool = False
+    today_pct: float = 0.0  # 今日漲幅（成分股平均）
 
 
 def is_diverge(m: float, inst: float) -> bool:
@@ -36,7 +37,8 @@ def mock_overview():
     out = []
     for i, (n, m, inst, c) in enumerate(raw):
         out.append(ThemeMetrics(theme_id=i + 1, key=f"mock_{i}", name=n, momentum_5d=m,
-                                inst_net=inst, count=c, diverge=is_diverge(m, inst)))
+                                inst_net=inst, count=c, diverge=is_diverge(m, inst),
+                                today_pct=round(m * 0.4, 1)))
     return out
 
 
@@ -110,12 +112,13 @@ def refresh_prices(rows):
 def aggregate_theme(rows):
     rows = [r for r in rows if r.get("_ok", True)]  # 只聚合取得到資料的成分股
     if not rows:
-        return {"momentum_5d": 0, "up_count": 0, "down_count": 0, "inst_ratio": 0, "strong_ratio": 0, "inst_net": 0}
+        return {"momentum_5d": 0, "today_pct": 0, "up_count": 0, "down_count": 0, "inst_ratio": 0, "strong_ratio": 0, "inst_net": 0}
     moms = [r["d5_pct"] for r in rows]
     nets = {str(i): r["inst"] for i, r in enumerate(rows)}
     strong = sum(1 for r in rows if uitheme.grade_tag(r["signal"]) in ("grade_A", "grade_B"))
     return {
         "momentum_5d": statistics.mean(moms),
+        "today_pct": statistics.mean([r["today_pct"] for r in rows]),
         "up_count": sum(1 for r in rows if r["today_pct"] > 0),
         "down_count": sum(1 for r in rows if r["today_pct"] < 0),
         "inst_ratio": institutional.theme_inst_ratio(nets),
@@ -139,15 +142,35 @@ def scan_theme(con, theme_id, force=False):
     return rows, agg
 
 
-def real_overview(con, force=False):
-    out = []
+def all_constituent_codes(con):
+    """全部成分股代號（去重），供進度/排行使用。"""
+    seen, out = set(), []
     for t in store.list_themes(con):
+        for c in _all_codes(con, t["id"]):
+            if c["code"] not in seen:
+                seen.add(c["code"]); out.append(c["code"])
+    return out
+
+
+def real_overview(con, force=False, progress=None):
+    """progress(done, total)：每分析完一檔回報一次（給冷啟動進度條）。"""
+    themes = store.list_themes(con)
+    total = sum(len(_all_codes(con, t["id"])) for t in themes)
+    done = 0
+    out = []
+    for t in themes:
         cons = _all_codes(con, t["id"])
-        rows = [analyze_stock_row(c["code"], con, force=force) for c in cons]
+        rows = []
+        for c in cons:
+            rows.append(analyze_stock_row(c["code"], con, force=force))
+            done += 1
+            if progress:
+                progress(done, total)
         agg = aggregate_theme(rows)
         out.append(ThemeMetrics(theme_id=t["id"], key=t["key"], name=t["name"],
                                 momentum_5d=round(agg["momentum_5d"], 1), inst_net=agg["inst_net"],
                                 count=len(cons), up_count=agg["up_count"], down_count=agg["down_count"],
                                 strong_ratio=agg["strong_ratio"],
-                                diverge=is_diverge(agg["momentum_5d"], agg["inst_net"])))
+                                diverge=is_diverge(agg["momentum_5d"], agg["inst_net"]),
+                                today_pct=round(agg["today_pct"], 1)))
     return out

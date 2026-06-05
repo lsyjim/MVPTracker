@@ -30,6 +30,23 @@ def _color(v):
     return "var(--inst)" if v > 0 else ("var(--down)" if v < 0 else "var(--t2)")
 
 
+def _price_table(recent):
+    """近 5 日股價：日期 / 收盤 / 漲跌%（前一交易日比較；紅漲綠跌）。"""
+    ui.label("近 5 日股價").style("font-size:12px;color:#C9CDD2;font-weight:600;margin:0 0 4px;")
+    if not recent:
+        ui.label("資料暫缺").style("font-size:11px;color:var(--t3);")
+        return
+    with ui.element("div").style("display:grid;grid-template-columns:1.1fr 1fr 1fr;gap:2px 8px;"):
+        ui.label("日期").style("color:var(--t3);font-size:11px;")
+        ui.label("收盤").style("color:var(--t3);font-size:11px;text-align:right;")
+        ui.label("漲跌").style("color:var(--t3);font-size:11px;text-align:right;")
+        for it in list(reversed(recent))[:5]:
+            ui.label(it["date"][5:].replace("-", "/")).classes("mono").style("color:var(--t2);font-size:11px;")
+            ui.label(f'{it["close"]}').classes("mono").style("text-align:right;font-size:12px;")
+            cls = "up" if it["pct"] >= 0 else "down"
+            ui.label(f'{it["pct"]:+.1f}%').classes(f"mono {cls}").style("text-align:right;font-size:12px;")
+
+
 def _inst_table(chip):
     """三大法人（近 5 日）小表：列=日期，欄=外/投/自，末列=5日合計。"""
     if not chip or not chip.get("available") or not chip.get("items"):
@@ -99,7 +116,12 @@ def open_modal(c, r, get_ohlc=None, on_add_watch=None, on_report=None, get_chip=
             with ui.element("div").style("display:flex;gap:8px;flex-wrap:wrap;margin:12px 0;"):
                 for ch in _chips(r):
                     ui.label(ch).style("font-size:11px;background:var(--elev);border-radius:6px;padding:4px 10px;color:var(--t2);")
-            _inst_table(chip)
+            # 兩欄並排：左=近5日股價、右=三大法人近5日（填滿底部）
+            with ui.element("div").style("display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:6px;align-items:start;"):
+                with ui.element("div").style("min-width:0;"):
+                    _price_table(r.get("recent"))
+                with ui.element("div").style("min-width:0;"):
+                    _inst_table(chip)
             with ui.element("div").style("display:flex;gap:10px;margin-top:14px;"):
                 ui.button("＋ 加入自選股", on_click=lambda: (on_add_watch and on_add_watch(c))).props("flat no-caps").style(
                     "flex:1;background:#1C222B !important;color:#E6E8EB !important;")

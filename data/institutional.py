@@ -25,8 +25,15 @@ def _streak(items, key):
 
 
 def summarize_iibs(data: dict) -> dict:
-    """單位：張（API 已是張數，與 UI 一致，免換算）。total = 三大法人合計淨買超。"""
-    items = sorted(data.get("iibs", []), key=lambda x: x.get("inputDate", ""), reverse=True)
+    """單位：張（API 已是張數，與 UI 一致，免換算）。total = 三大法人合計淨買超。
+    依交易日去重（保留每日一筆）+ 由新到舊排序；_streak 跑在乾淨資料上。
+    註：wukong /iibs 偶有缺漏交易日（來源資料不完整），連買天數為可得資料的保守下限。"""
+    seen, items = set(), []
+    for it in sorted(data.get("iibs", []), key=lambda x: x.get("inputDate", ""), reverse=True):
+        d = it.get("inputDate")
+        if d and d not in seen:
+            seen.add(d)
+            items.append(it)
     if not items:
         return {"available": False}
     latest = items[0]

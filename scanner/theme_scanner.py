@@ -5,7 +5,7 @@ from concurrent.futures import ThreadPoolExecutor
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "analysis"))
 
 from concept import store
-from data import institutional, cache
+from data import institutional, cache, fetcher
 from ui import theme as uitheme
 
 MAX_WORKERS = 10
@@ -78,13 +78,16 @@ def analyze_stock_row(code, con=None, force=False):
     res = QuickAnalyzer.analyze_stock(code, "台股", scan_mode=True, chip=chip)  # 便宜資料 + 真實評級
     inst_ok = bool(chip.get("available"))
     inst_val = chip.get("total_5d") if inst_ok else None   # 5 日累計（與 5 日動能對齊）；暫缺為 None
+    # #1 今日漲跌幅一律用日線最後兩個交易日收盤（跳過假日，週末也正常；不受即時 change_pct=0 影響）
+    recent = fetcher.recent_daily(code)                     # 近6交易日 [{date,close,pct}]
+    today_pct = recent[-1]["pct"] if recent else (res.get("price_change_pct", 0) if res else 0)
     if not res:
         # 取不到資料：回暫缺列、不快取（下次會重試）
-        return {"price": 0, "today_pct": 0, "d5_pct": 0, "rs": 50,
+        return {"price": 0, "today_pct": today_pct, "d5_pct": 0, "rs": 50,
                 "inst": inst_val, "inst_ok": inst_ok, "signal": "資料暫缺",
                 "foreign_5d": None, "trust_5d": None, "dealer_5d": None, "fcons": 0, "tcons": 0,
                 "grade": "grade_C", "vol_ratio": 0, "bias": 0, "cons_buy": 0, "diverge": False,
-                "_ok": False}
+                "recent": recent, "_ok": False}
     rs = res.get("relative_strength", {}).get("rs_score", 50)
     d5 = res.get("relative_strength", {}).get("rs_5d", 0)
     vp = res.get("volume_price", {}) or {}
@@ -94,7 +97,8 @@ def analyze_stock_row(code, con=None, force=False):
     sig = _signal_text(res)
     row = {
         "price": res.get("current_price", 0),
-        "today_pct": res.get("price_change_pct", 0),
+        "today_pct": today_pct,                                  # #1 日線收盤比較
+        "recent": recent,                                        # #3 近5日股價（彈窗用）
         "d5_pct": d5,
         "rs": round(rs),
         "inst": inst_val,
@@ -120,17 +124,12 @@ def analyze_stock_row(code, con=None, force=False):
 
 
 def refresh_prices(rows):
-    """盤中輕量刷新：只更新 price / today_pct（不重算 grade/RS）。
-    收盤後報價的 change_pct 常為 0，會蓋掉當日收盤漲幅，故 cp 為 0 時不覆寫 today_pct。"""
-    from data import fetcher
+    """盤中輕量刷新：只更新『現價』；漲跌幅基準維持日線收盤比較（#1），不用即時 change_pct 覆寫。"""
     for code, row in rows.items():
         try:
             q = fetcher.get_quote(code)
             if q and q.get("price"):
                 row["price"] = q["price"]
-                cp = q.get("change_pct")
-                if cp:   # 僅在有非零漲跌時更新（避免盤後 0 蓋掉收盤值）
-                    row["today_pct"] = cp
         except Exception:
             pass
     return rows

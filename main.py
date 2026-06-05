@@ -234,11 +234,7 @@ def index():
             try:
                 q = await run.io_bound(fetcher.get_quote, code)
                 if q and q.get("price"):
-                    pl.set_text(str(q["price"]))
-                    cp = q.get("change_pct")
-                    if cp:   # 僅非零才更新，避免盤後 0 蓋掉收盤漲幅
-                        tl.set_text(f"{cp:+.1f}%")
-                        tl.classes(replace="mono " + ("up" if cp >= 0 else "down"))
+                    pl.set_text(str(q["price"]))   # #1 盤中只刷現價；漲跌幅維持日線收盤比較
             except Exception:
                 pass
     if os.environ.get("MVP_NOREFRESH") != "1":

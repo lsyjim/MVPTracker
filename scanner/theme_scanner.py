@@ -81,9 +81,16 @@ def analyze_stock_row(code, con=None, force=False):
     if not res:
         # 取不到資料：回暫缺列、不快取（下次會重試）
         return {"price": 0, "today_pct": 0, "d5_pct": 0, "rs": 50,
-                "inst": inst_val, "inst_ok": inst_ok, "signal": "資料暫缺", "_ok": False}
+                "inst": inst_val, "inst_ok": inst_ok, "signal": "資料暫缺",
+                "grade": "grade_C", "vol_ratio": 0, "bias": 0, "cons_buy": 0, "diverge": False,
+                "_ok": False}
     rs = res.get("relative_strength", {}).get("rs_score", 50)
     d5 = res.get("relative_strength", {}).get("rs_5d", 0)
+    vp = res.get("volume_price", {}) or {}
+    ba = (res.get("mean_reversion", {}) or {}).get("bias_analysis", {}) or {}
+    fc = chip.get("foreign_consecutive_days", 0) or 0
+    tc = chip.get("trust_consecutive_days", 0) or 0
+    sig = _signal_text(res)
     row = {
         "price": res.get("current_price", 0),
         "today_pct": res.get("price_change_pct", 0),
@@ -91,7 +98,13 @@ def analyze_stock_row(code, con=None, force=False):
         "rs": round(rs),
         "inst": inst_val,
         "inst_ok": inst_ok,
-        "signal": _signal_text(res),
+        "signal": sig,
+        # 今日精選股因子
+        "grade": uitheme.grade_tag(sig) or "grade_C",
+        "vol_ratio": round(vp.get("vol_ratio", 0) or 0, 2),     # 今日量 / 20日均量
+        "bias": round(ba.get("bias_20", 0) or 0, 1),            # 20日乖離 %
+        "cons_buy": max(fc if fc > 0 else 0, tc if tc > 0 else 0),  # 外資/投信連續買超天數
+        "diverge": bool(inst_ok and inst_val is not None and ((d5 > 0 and inst_val < 0) or (d5 < 0 and inst_val > 0))),
         "_ok": True,
     }
     if con is not None:

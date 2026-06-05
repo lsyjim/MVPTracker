@@ -139,7 +139,8 @@ def index():
             overview.render(con, on_open_theme=lambda m: navigate("detail", m.theme_id),
                             get_metrics=lambda: metrics, on_theme_changed=lambda: navigate("overview"),
                             on_refresh=(_refresh_overview
-                                        if (allow_refresh and os.environ.get("MVP_MOCK") != "1") else None))
+                                        if (allow_refresh and os.environ.get("MVP_MOCK") != "1") else None),
+                            on_open_stock=(None if os.environ.get("MVP_MOCK") == "1" else _open_stock))
 
     async def _progressive_overview(force):
         """背景平行掃描 + 漸進顯示：先畫骨架，每完成一個題材即時填入該塊。"""

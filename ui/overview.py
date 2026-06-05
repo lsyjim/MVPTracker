@@ -5,8 +5,11 @@ from concept import store
 from data import fetcher
 
 
-def render(con, on_open_theme, get_metrics, on_theme_changed, on_refresh=None):
+def render(con, on_open_theme, get_metrics, on_theme_changed, on_refresh=None, on_open_stock=None):
     """總覽頁。get_metrics() → List[ThemeMetrics]；on_open_theme(theme_metrics)。"""
+    if on_open_stock:                      # 今日精選股（頂部）
+        from ui import picks
+        picks.render(con, on_open_stock)
     metrics = get_metrics()
     if not metrics:
         ui.label("尚無題材資料").style("color:var(--t3);")

@@ -301,7 +301,7 @@ class QuickAnalyzer:
             else:
                 market_regime = MarketRegimeAnalyzer.get_market_regime(market)
             
-            # 波段分析
+            # 波段分析（~1ms，純 CPU；保留以確保 scan 評級與完整報告/個股彈窗一致）
             wave_analysis = WaveAnalyzer.analyze_wave(hist)
             
             # 均值回歸分析
@@ -366,12 +366,13 @@ class QuickAnalyzer:
                 "recommendation": ""
             }
             
-            # v4.4.6 新增：形態分析
+            # v4.4.6 形態分析（~10ms，純 CPU；保留：其頭部覆蓋會改變評級，
+            # 略過會使 scan 與完整報告不一致，例如 3231 SELL→C）
             if QuantConfig.ENABLE_PATTERN_ANALYSIS:
                 try:
                     from analyzers import PatternAnalyzer
                     pattern_analysis = PatternAnalyzer.analyze(
-                        hist, 
+                        hist,
                         lookback=QuantConfig.PATTERN_LOOKBACK_DAYS
                     )
                     result["pattern_analysis"] = pattern_analysis

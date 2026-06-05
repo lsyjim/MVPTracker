@@ -96,9 +96,14 @@ class QuickAnalyzer:
             return None
 
     @staticmethod
-    def analyze_stock(symbol, market="台股", analysis_date=None):
+    def analyze_stock(symbol, market="台股", analysis_date=None, scan_mode=False, chip=None):
         """
         快速分析股票 - v4.3 增強版（整合即時與歷史分析）
+
+        scan_mode=True（首頁/題材掃描）：只用便宜資料產出 ThreeLayerEngine 真實 A/B/C 評級；
+          跳過 yfinance .info 基本面、多年 PE Band、多年風險/beta、4 個策略回測、verbose 建議。
+          評級引擎只用 technical/RS/bias/volume/法人，與完整模式一致。
+        chip：外部已抓好的法人 chip_flow（避免在此重複抓取）。
 
         v4.4.7 更新：加入 YFinance 速率限制處理
         
@@ -219,10 +224,13 @@ class QuickAnalyzer:
                     return None
                 
                 actual_date = None
-                try:
-                    hist_long = DataSourceManager.get_history(symbol, market, period=f"{QuantConfig.RISK_DATA_YEARS}y")
-                except:
-                    hist_long = hist  # 如果長期數據獲取失敗，使用短期數據
+                if scan_mode:
+                    hist_long = hist  # 掃描模式：不抓多年資料（評級不需要）
+                else:
+                    try:
+                        hist_long = DataSourceManager.get_history(symbol, market, period=f"{QuantConfig.RISK_DATA_YEARS}y")
+                    except:
+                        hist_long = hist  # 如果長期數據獲取失敗，使用短期數據
             
             # 確保 hist_long 有效
             if hist_long is None or hist_long.empty:
@@ -254,18 +262,25 @@ class QuickAnalyzer:
             # 技術指標
             technical = QuickAnalyzer._technical_analysis(hist)
             
-            # 基本面分析（根據模式走不同分支）
-            # 使用延遲初始化的 yfinance ticker
-            fundamental = QuickAnalyzer._fundamental_analysis_v4(get_yf_ticker(), ticker_symbol, hist, is_historical)
-            
-            # 風險指標
-            risk_metrics = QuickAnalyzer._calculate_risk_metrics_v4(hist_long, ticker_symbol, market)
+            # 基本面分析（掃描模式跳過 yfinance .info / PE Band，用預設值；評級不依賴基本面）
+            if scan_mode:
+                fundamental = QuickAnalyzer._get_default_fundamental()
+            else:
+                fundamental = QuickAnalyzer._fundamental_analysis_v4(get_yf_ticker(), ticker_symbol, hist, is_historical)
+
+            # 風險指標（掃描模式跳過多年風險/beta(.info)，用預設值；評級不依賴風險指標）
+            if scan_mode:
+                risk_metrics = QuickAnalyzer._get_default_risk_metrics()
+            else:
+                risk_metrics = QuickAnalyzer._calculate_risk_metrics_v4(hist_long, ticker_symbol, market)
             
             # 支撐壓力
             support_resistance = QuickAnalyzer._calculate_support_resistance(hist, technical)
             
-            # 籌碼面分析（根據模式走不同分支）
-            if is_historical:
+            # 籌碼面分析（chip 由外部傳入時直接用，避免重複抓取法人）
+            if chip is not None:
+                chip_flow = chip
+            elif is_historical:
                 chip_flow = QuickAnalyzer._analyze_chip_flow_historical(symbol, market, analysis_date)
             else:
                 chip_flow = QuickAnalyzer._analyze_chip_flow_cached(symbol, market)
@@ -420,13 +435,15 @@ class QuickAnalyzer:
             decision_matrix = DecisionMatrix.analyze(result)
             result["decision_matrix"] = decision_matrix
             
-            # 生成建議
-            result["recommendation"] = QuickAnalyzer._generate_recommendation_v43(result, decision_matrix)
-            
-            # 策略分析
-            result["strategies"], result["best_strategy"] = QuickAnalyzer.analyze_strategies_v4(
-                hist, technical, fundamental, market_regime
-            )
+            # 生成建議 + 策略（掃描模式跳過：完整報告才需要；A/B/C 評級已在 decision_matrix）
+            if scan_mode:
+                result["recommendation"] = ""
+                result["strategies"], result["best_strategy"] = [], None
+            else:
+                result["recommendation"] = QuickAnalyzer._generate_recommendation_v43(result, decision_matrix)
+                result["strategies"], result["best_strategy"] = QuickAnalyzer.analyze_strategies_v4(
+                    hist, technical, fundamental, market_regime
+                )
             
             result["data_time"] = hist.index[-1].strftime('%Y-%m-%d %H:%M:%S')
             

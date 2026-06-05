@@ -70,8 +70,8 @@ def analyze_stock_row(code, con=None, force=False):
         if cached and cache.is_today(ts):
             return cached
     from quick_analyzer import QuickAnalyzer
-    res = QuickAnalyzer.analyze_stock(code, "台股")
-    chip = institutional.chip_flow(code, con)
+    chip = institutional.chip_flow(code, con)               # 法人只抓一次
+    res = QuickAnalyzer.analyze_stock(code, "台股", scan_mode=True, chip=chip)  # 便宜資料 + 真實評級
     inst_ok = bool(chip.get("available"))
     inst_val = chip.get("total_5d") if inst_ok else None   # 5 日累計（與 5 日動能對齊）；暫缺為 None
     if not res:

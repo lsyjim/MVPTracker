@@ -47,12 +47,13 @@ def _price_table(recent):
             ui.label(f'{it["pct"]:+.1f}%').classes(f"mono {cls}").style("text-align:right;font-size:12px;")
 
 
-def _inst_table(chip):
+def _inst_table(chip, loading=False):
     """三大法人（近 5 日）小表：列=日期，欄=外/投/自，末列=5日合計。"""
     if not chip or not chip.get("available") or not chip.get("items"):
         ui.label("三大法人：資料暫缺").style("font-size:11px;color:var(--t3);margin-top:8px;")
         return
-    ui.label("三大法人（近 5 日，張）").style("font-size:12px;color:#C9CDD2;font-weight:600;margin:10px 0 4px;")
+    src = "・TWSE 完整" if chip.get("source") == "TWSE" else ("・補完整中…" if loading else "")
+    ui.label(f"三大法人（近 5 日，張{src}）").style("font-size:12px;color:#C9CDD2;font-weight:600;margin:0 0 4px;")
     grid = "display:grid;grid-template-columns:1.2fr 1fr 1fr 1fr;gap:2px 8px;"
     with ui.element("div").style(grid):
         ui.label("日期").style("color:var(--t3);font-size:11px;")
@@ -91,7 +92,8 @@ def _chips(r):
     return out
 
 
-def open_modal(c, r, get_ohlc=None, on_add_watch=None, on_report=None, get_chip=None):
+def open_modal(c, r, get_ohlc=None, on_add_watch=None, on_report=None, get_chip=None, get_full=None):
+    from nicegui import run
     ohlc = (get_ohlc(c["code"]) if get_ohlc else None) or _mock_ohlc()
     x = [str(i) for i in range(len(ohlc))]
     up = r["today_pct"] >= 0
@@ -120,8 +122,18 @@ def open_modal(c, r, get_ohlc=None, on_add_watch=None, on_report=None, get_chip=
             with ui.element("div").style("display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:6px;align-items:start;"):
                 with ui.element("div").style("min-width:0;"):
                     _price_table(r.get("recent"))
-                with ui.element("div").style("min-width:0;"):
-                    _inst_table(chip)
+                inst_box = ui.element("div").style("min-width:0;")
+                with inst_box:
+                    _inst_table(chip, loading=bool(get_full))
+            # on-demand 補爬 TWSE 完整法人（連續日期 + 正確連買），完成後替換 wukong 初值
+            if get_full:
+                async def _load_full():
+                    full = await run.io_bound(get_full, c["code"])
+                    if full and full.get("available"):
+                        inst_box.clear()
+                        with inst_box:
+                            _inst_table(full)
+                ui.timer(0.05, _load_full, once=True)
             with ui.element("div").style("display:flex;gap:10px;margin-top:14px;"):
                 ui.button("＋ 加入自選股", on_click=lambda: (on_add_watch and on_add_watch(c))).props("flat no-caps").style(
                     "flex:1;background:#1C222B !important;color:#E6E8EB !important;")

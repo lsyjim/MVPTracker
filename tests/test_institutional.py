@@ -34,3 +34,13 @@ def test_summarize_empty():
 def test_theme_ratio():
     nets = {"2330": 1100, "2317": -50, "2454": 300}
     assert theme_inst_ratio(nets) == 2 / 3   # 3 檔中 2 檔淨買
+
+
+def test_streak_series():
+    from data.institutional import _streak_series
+    buy = [{"trust": 5}, {"trust": 3}, {"trust": 2}, {"trust": -1}, {"trust": 4}]
+    assert _streak_series(buy, "trust") == 3        # 連 3 買後翻賣
+    sell = [{"foreign": -2}, {"foreign": -5}, {"foreign": 1}]
+    assert _streak_series(sell, "foreign") == -2    # 連 2 賣（負值）
+    assert _streak_series([], "trust") == 0
+    assert _streak_series([{"trust": 0}, {"trust": 3}], "trust") == 0  # 最新為 0 不算

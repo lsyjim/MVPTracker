@@ -124,7 +124,8 @@ def index():
         from data import institutional
         stock_modal.open_modal(c, r, get_ohlc=lambda code: fetcher.ohlc_for_echart(code)[1],
                                on_add_watch=_add_watch, on_report=_show_report,
-                               get_chip=lambda code: institutional.chip_flow(code, con))
+                               get_chip=lambda code: institutional.chip_flow(code, con),
+                               get_full=lambda code: institutional.full_chip_flow(code, con))
 
     async def _refresh_overview():
         await _progressive_overview(force=True)   # 重新掃描：同樣走漸進顯示

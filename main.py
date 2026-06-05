@@ -95,6 +95,8 @@ def index():
 
     # ----- 單一滿版內容區（只有它會換頁/捲動）-----
     content_box = ui.column().classes("w-full").style("padding:18px;gap:0;min-width:0;align-items:stretch;")
+    # 穩定的 timer 容器：不隨換頁清空，避免動態建立的 ui.timer 綁到已刪除的 slot
+    timer_host = ui.element("div").style("display:none;")
 
     def navigate(page, theme_id=None):
         state["page"] = page
@@ -122,17 +124,22 @@ def index():
         stock_modal.open_modal(c, r, get_ohlc=lambda code: fetcher.ohlc_for_echart(code)[1],
                                on_add_watch=_add_watch, on_report=_show_report)
 
-    def _draw_overview(metrics, status=None):
+    async def _refresh_overview():
+        await _progressive_overview(force=True)   # 重新掃描：同樣走漸進顯示
+
+    def _draw_overview(metrics, status=None, allow_refresh=False):
         if state["page"] != "overview":
             return
         content_box.clear()
         with content_box:
             if status:
                 ui.label(status).style("font-size:12px;color:var(--t3);margin-bottom:8px;")
+            # on_refresh 透過 ui.timer 啟動（在按鈕仍存在的 context 建立 timer；
+            # 其 callback 為 coroutine function 會被 NiceGUI await → 真正執行漸進掃描）
             overview.render(con, on_open_theme=lambda m: navigate("detail", m.theme_id),
                             get_metrics=lambda: metrics, on_theme_changed=lambda: navigate("overview"),
-                            on_refresh=(None if os.environ.get("MVP_MOCK") == "1"
-                                        else lambda: ui.timer(0.01, lambda: _progressive_overview(True), once=True)))
+                            on_refresh=(_refresh_overview
+                                        if (allow_refresh and os.environ.get("MVP_MOCK") != "1") else None))
 
     async def _progressive_overview(force):
         """背景平行掃描 + 漸進顯示：先畫骨架，每完成一個題材即時填入該塊。"""
@@ -149,12 +156,15 @@ def index():
                 return
             with sess["lock"]:
                 done, total, fin = sess["done"], sess["total"], sess["finished"]
-            _draw_overview(current(), status=(None if fin else f"分析中… {done}/{total}（背景進行，可先點選已完成題材）"))
-        _draw_overview(current(), status=f"分析中… 0/{sess['total']}")
-        poll = ui.timer(0.6, tick)
+            # 掃描中不顯示「重新掃描」（避免重複觸發）；完成才開放
+            _draw_overview(current(), status=(None if fin else f"分析中… {done}/{total}（背景進行，可先點選已完成題材）"),
+                           allow_refresh=fin)
+        _draw_overview(current(), status=f"分析中… 0/{sess['total']}", allow_refresh=False)
+        with timer_host:                       # 綁到穩定容器，避免 slot 被清空
+            poll = ui.timer(0.6, tick)
         await run.io_bound(sess["run"])
         poll.cancel()
-        _draw_overview(current(), status=f"更新於 {_dt.datetime.now().strftime('%H:%M')}")
+        _draw_overview(current(), status=f"更新於 {_dt.datetime.now().strftime('%H:%M')}", allow_refresh=True)
 
     async def _render_overview():
         content_box.clear()
@@ -166,14 +176,16 @@ def index():
         need = [c for c in codes if not (lambda rt: rt[0] and _cache.is_today(rt[1]))(_cache.get(con, c, "row"))]
         if not need:                       # 當日全快取 → 瞬開
             import datetime as _dt
-            _draw_overview(theme_scanner.real_overview(con), status=f"更新於 {_dt.datetime.now().strftime('%H:%M')}")
+            _draw_overview(theme_scanner.real_overview(con),
+                           status=f"更新於 {_dt.datetime.now().strftime('%H:%M')}", allow_refresh=True)
         else:                              # 冷啟動 → 背景漸進掃描
             await _progressive_overview(force=False)
 
     def _render_content():
         price_cells.clear()
         if state["page"] == "overview":
-            ui.timer(0.01, _render_overview, once=True)   # 非同步（含進度）
+            with timer_host:                              # 穩定 slot，避免綁到剛清空的導覽列
+                ui.timer(0.01, _render_overview, once=True)   # 非同步（含進度）
             return
         content_box.clear()
         with content_box:

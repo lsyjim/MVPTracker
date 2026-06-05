@@ -18,6 +18,13 @@ def test_summarize_latest_and_streak():
     # 5 日累計 = 全部 3 筆 total 相加（樣本不足 5 筆時取現有）
     assert s["total_5d"] == 1100 + 550 + (-20)
     assert s["date"] == "2026-05-30"
+    # 各別 5 日累計
+    assert s["foreign_5d"] == 1000 + 500 + (-30)
+    assert s["trust_5d"] == 200 + 50 + 10
+    assert s["dealer_5d"] == -100 + 0 + 0
+    # 每日明細保留
+    assert len(s["items"]) == 3
+    assert s["items"][0] == {"date": "2026-05-30", "foreign": 1000, "trust": 200, "dealer": -100, "total": 1100}
 
 
 def test_summarize_empty():

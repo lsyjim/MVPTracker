@@ -121,8 +121,10 @@ def index():
 
     def _open_stock(c, r):
         from ui import stock_modal
+        from data import institutional
         stock_modal.open_modal(c, r, get_ohlc=lambda code: fetcher.ohlc_for_echart(code)[1],
-                               on_add_watch=_add_watch, on_report=_show_report)
+                               on_add_watch=_add_watch, on_report=_show_report,
+                               get_chip=lambda code: institutional.chip_flow(code, con))
 
     async def _refresh_overview():
         await _progressive_overview(force=True)   # 重新掃描：同樣走漸進顯示
@@ -211,11 +213,10 @@ def index():
                               on_changed=lambda: navigate("detail", tid),
                               get_row=lambda code: rows.get(code) or detail._mock_row(code),
                               header=header, on_refresh=do_refresh, price_cells=price_cells)
-                if os.environ.get("MVP_MODAL"):
-                    from ui import stock_modal
-                    ui.timer(0.4, lambda: stock_modal.open_modal(
+                if os.environ.get("MVP_MODAL"):   # 測試 hook：走真實 _open_stock（含 get_chip）
+                    ui.timer(0.4, lambda: _open_stock(
                         {"code": "2049", "name": "上銀", "in_master": 1},
-                        {"price": 612, "today_pct": 3.0, "rs": 91}), once=True)
+                        rows.get("2049") or {"price": 612, "today_pct": 3.0, "rs": 91}), once=True)
             elif state["page"] == "watch":
                 from ui import watchlist
                 watchlist.render(con)

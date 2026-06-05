@@ -30,7 +30,17 @@ def summarize_iibs(data: dict) -> dict:
     if not items:
         return {"available": False}
     latest = items[0]
-    total_5d = sum((it.get("total", 0) or 0) for it in items[:5])  # 近 5 個交易日累計（與 5 日動能對齊）
+    five = items[:5]
+    total_5d = sum((it.get("total", 0) or 0) for it in five)             # 近 5 日合計（熱圖/聚合用，不動）
+    foreign_5d = sum((it.get("foreignInvestorsBuySell", 0) or 0) for it in five)
+    trust_5d = sum((it.get("investmentTrustBuySell", 0) or 0) for it in five)
+    dealer_5d = sum((it.get("dealerBuySell", 0) or 0) for it in five)
+    # 保留每日明細（供個股彈窗）：外資/投信/自營 各別買賣超（張）
+    days = [{"date": it.get("inputDate", ""),
+             "foreign": it.get("foreignInvestorsBuySell", 0) or 0,
+             "trust": it.get("investmentTrustBuySell", 0) or 0,
+             "dealer": it.get("dealerBuySell", 0) or 0,
+             "total": it.get("total", 0) or 0} for it in items[:10]]
     return {
         "available": True,
         "foreign_net": latest.get("foreignInvestorsBuySell", 0) or 0,
@@ -38,8 +48,12 @@ def summarize_iibs(data: dict) -> dict:
         "dealer_net": latest.get("dealerBuySell", 0) or 0,
         "total": latest.get("total", 0) or 0,           # 最新單日合計
         "total_5d": total_5d,                            # 近 5 日累計合計
+        "foreign_5d": foreign_5d,                        # 近 5 日外資累計
+        "trust_5d": trust_5d,                            # 近 5 日投信累計
+        "dealer_5d": dealer_5d,                          # 近 5 日自營累計
         "foreign_consecutive_days": _streak(items, "foreignInvestorsBuySell"),
         "trust_consecutive_days": _streak(items, "investmentTrustBuySell"),
+        "items": days,                                   # 每日明細（date/foreign/trust/dealer/total）
         "date": latest.get("inputDate", ""),             # 法人資料實際日期（盤後落後）
     }
 

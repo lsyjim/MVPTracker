@@ -69,16 +69,43 @@ def _group(con, theme_id, sub_id, title, on_open_stock, on_changed, get_row, ope
         head.on("click", lambda e: toggle())
 
 
-_GRID = "display:grid;grid-template-columns:24px 1.6fr 0.9fr 0.8fr 0.8fr 0.6fr 1fr 1.1fr;align-items:center;gap:8px;"
+_GRID = ("display:grid;grid-template-columns:22px 1.5fr 0.8fr 0.7fr 0.7fr 0.5fr 0.7fr 0.7fr 0.7fr 1fr;"
+         "align-items:center;gap:6px;")
 
 
 def _header_row():
-    # （序號）代號/名稱=左；現價/今日/5日/RS/法人=右；訊號=左
-    cols = [("", "left"), ("代號 / 名稱", "left"), ("現價", "right"), ("今日", "right"),
-            ("5日", "right"), ("RS", "right"), ("法人5日(張)", "right"), ("訊號", "left")]
+    # 外/投/自 = 三大法人近5日各別買賣超（張）
+    cols = [("", "left", None), ("代號 / 名稱", "left", None), ("現價", "right", None), ("今日", "right", None),
+            ("5日", "right", None), ("RS", "right", None),
+            ("外", "right", "外資（近5日買賣超，張）"), ("投", "right", "投信（近5日買賣超，張）"),
+            ("自", "right", "自營商（近5日買賣超，張）"), ("訊號", "left", None)]
     with ui.element("div").style(_GRID + "padding:9px 16px;font-size:11px;color:var(--t3);"):
-        for text, align in cols:
-            ui.label(text).style(f"text-align:{align};")
+        for text, align, tip in cols:
+            if tip:
+                ui.html(f'<span title="{tip}" style="text-align:{align};display:block;cursor:help;">{text}</span>')
+            else:
+                ui.label(text).style(f"text-align:{align};")
+
+
+def _abbr(v):
+    """大數縮寫：≥1000 → +1.2k；否則 +860；None → —。"""
+    if v is None:
+        return "—"
+    sign = "+" if v >= 0 else "-"
+    a = abs(v)
+    return f"{sign}{a / 1000:.1f}k" if a >= 1000 else f"{sign}{a}"
+
+
+def _inst_cell(val, cons=0, dim=False):
+    """法人單欄：買超金/賣超綠；自營略淡；連買≥2 掛小標。在當前 grid context 建立。"""
+    cls = "muted" if (val is None or val == 0) else ("gold" if val > 0 else "down")
+    extra = "opacity:0.8;" if dim else ""
+    if cons and cons >= 2:
+        with ui.element("div").style("display:flex;flex-direction:column;align-items:flex-end;line-height:1.05;" + extra):
+            ui.label(_abbr(val)).classes(f"mono {cls}").style("text-align:right;")
+            ui.label(f"連{cons}買").style("font-size:9px;color:var(--inst);")
+    else:
+        ui.label(_abbr(val)).classes(f"mono {cls}").style("text-align:right;" + extra)
 
 
 _SHORT = {"grade_A": "A 主攻", "grade_B": "B 追蹤", "grade_C": "觀察", "grade_sell": "賣出"}
@@ -87,11 +114,6 @@ _SHORT = {"grade_A": "A 主攻", "grade_B": "B 追蹤", "grade_C": "觀察", "gr
 def _stock_row(idx, c, r, on_open_stock, price_cells=None):
     dc = "up" if r["today_pct"] >= 0 else "down"
     fc = "up" if r["d5_pct"] >= 0 else "down"
-    inst = r.get("inst")
-    if inst is None:
-        inst_txt, ic = "—", "muted"      # 法人資料暫缺
-    else:
-        inst_txt, ic = f"{inst:+,}", ("down" if inst < 0 else "gold")
     rsc = "gold" if r["rs"] >= 80 else "muted"
     sig = r["signal"]
     tag = theme.grade_tag(sig) or "grade_C"
@@ -107,7 +129,11 @@ def _stock_row(idx, c, r, on_open_stock, price_cells=None):
         today_label = ui.label(f'{r["today_pct"]:+.1f}%').classes(f"mono {dc}").style("text-align:right;")
         ui.label(f'{r["d5_pct"]:+.1f}%').classes(f"mono {fc}").style("text-align:right;")
         ui.label(f'{r["rs"]}').classes(f"mono {rsc}").style("text-align:right;")
-        ui.label(inst_txt).classes(f"mono {ic}").style("text-align:right;")
+        # 三大法人近5日：外 / 投 / 自
+        _fc, _tc = r.get("fcons", 0) or 0, r.get("tcons", 0) or 0
+        _inst_cell(r.get("foreign_5d"), cons=(_fc if _fc >= 2 else 0))
+        _inst_cell(r.get("trust_5d"), cons=(_tc if _tc >= 2 else 0))
+        _inst_cell(r.get("dealer_5d"), dim=True)
         # 短標籤 badge（完整訊號滑鼠移上顯示）
         ui.html(f'<span title="{sig}" style="font-size:12px;padding:4px 10px;border-radius:7px;font-weight:600;'
                 f'white-space:nowrap;background:{bg};color:{fg}">{label}</span>')

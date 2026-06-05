@@ -82,6 +82,7 @@ def analyze_stock_row(code, con=None, force=False):
         # 取不到資料：回暫缺列、不快取（下次會重試）
         return {"price": 0, "today_pct": 0, "d5_pct": 0, "rs": 50,
                 "inst": inst_val, "inst_ok": inst_ok, "signal": "資料暫缺",
+                "foreign_5d": None, "trust_5d": None, "dealer_5d": None, "fcons": 0, "tcons": 0,
                 "grade": "grade_C", "vol_ratio": 0, "bias": 0, "cons_buy": 0, "diverge": False,
                 "_ok": False}
     rs = res.get("relative_strength", {}).get("rs_score", 50)
@@ -99,6 +100,12 @@ def analyze_stock_row(code, con=None, force=False):
         "inst": inst_val,
         "inst_ok": inst_ok,
         "signal": sig,
+        # 三大法人 5 日各別累計（明細三欄；暫缺為 None 不為 0）
+        "foreign_5d": chip.get("foreign_5d") if inst_ok else None,
+        "trust_5d": chip.get("trust_5d") if inst_ok else None,
+        "dealer_5d": chip.get("dealer_5d") if inst_ok else None,
+        "fcons": fc,    # 外資連續買超天數
+        "tcons": tc,    # 投信連續買超天數
         # 今日精選股因子
         "grade": uitheme.grade_tag(sig) or "grade_C",
         "vol_ratio": round(vp.get("vol_ratio", 0) or 0, 2),     # 今日量 / 20日均量

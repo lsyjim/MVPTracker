@@ -11,8 +11,19 @@ def kpi_card(label, value, sub, sub_class="muted"):
 
 
 def heat_tile(m, on_click):
-    bg, fg = theme.momentum_color(m.momentum_5d)
     flex = max(4, m.count)
+    if getattr(m, "pending", False):
+        # 骨架/微光：尚未掃完
+        tile = ui.element("div").style(
+            f"position:relative;height:72px;border-radius:9px;padding:9px 11px 12px;flex:{flex} 1 102px;"
+            "min-width:104px;background:#1C222B;cursor:pointer;overflow:hidden;display:flex;flex-direction:column;"
+            "justify-content:space-between;opacity:0.55;animation:mvppulse 1.2s ease-in-out infinite;")
+        tile.on("click", lambda e, t=m: on_click(t))
+        with tile:
+            ui.label(m.name).style("font-size:13px;font-weight:600;color:var(--t2);")
+            ui.label("分析中…").style("font-size:12px;font-family:var(--mono);color:var(--t3);")
+        return tile
+    bg, fg = theme.momentum_color(m.momentum_5d)
     tile = ui.element("div").style(
         f"position:relative;height:72px;border-radius:9px;padding:9px 11px 12px;flex:{flex} 1 102px;"
         f"min-width:104px;background:{bg};cursor:pointer;overflow:hidden;display:flex;flex-direction:column;justify-content:space-between;"

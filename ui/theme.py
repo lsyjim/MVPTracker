@@ -66,5 +66,6 @@ def apply_global():
       .mono {{ font-family:var(--mono); }}
       .up {{ color:var(--up); }} .down {{ color:var(--down); }}
       .muted {{ color:var(--t2); }} .gold {{ color:var(--inst); }}
+      @keyframes mvppulse {{ 0%,100%{{opacity:.45}} 50%{{opacity:.7}} }}
     </style>
     """)

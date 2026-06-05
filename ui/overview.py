@@ -11,10 +11,11 @@ def render(con, on_open_theme, get_metrics, on_theme_changed, on_refresh=None):
     if not metrics:
         ui.label("尚無題材資料").style("color:var(--t3);")
         return
-    # KPI ×4
-    strongest = max(metrics, key=lambda m: m.momentum_5d)
-    most_inst = max(metrics, key=lambda m: m.inst_net)
-    diverge_n = sum(1 for m in metrics if m.diverge)
+    # KPI 只統計已掃完（非 pending）的題材
+    real = [m for m in metrics if not getattr(m, "pending", False)]
+    strongest = max(real, key=lambda m: m.momentum_5d) if real else None
+    most_inst = max(real, key=lambda m: m.inst_net) if real else None
+    diverge_n = sum(1 for m in real if m.diverge)
     idx = fetcher.get_index()
     if idx:
         idx_val = f'{idx["value"]:,.0f}'
@@ -23,8 +24,15 @@ def render(con, on_open_theme, get_metrics, on_theme_changed, on_refresh=None):
     else:
         idx_val, idx_sub, idx_cls = "—", "取得中…", "muted"
     with ui.element("div").style("display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:18px;"):
-        components.kpi_card("動能最強", strongest.name, f"5日 +{strongest.momentum_5d:.1f}%", "up")
-        components.kpi_card("法人最買超", most_inst.name, "外資+投信 淨買", "gold")
+        if strongest:
+            components.kpi_card("動能最強", strongest.name, f"5日 {strongest.momentum_5d:+.1f}%",
+                                "up" if strongest.momentum_5d >= 0 else "down")
+        else:
+            components.kpi_card("動能最強", "—", "掃描中…", "muted")
+        if most_inst:
+            components.kpi_card("法人最買超", most_inst.name, "外資+投信 淨買", "gold")
+        else:
+            components.kpi_card("法人最買超", "—", "掃描中…", "muted")
         components.kpi_card("加權指數", idx_val, idx_sub, idx_cls)
         components.kpi_card("背離警示", f"{diverge_n} 個題材", "動能與法人方向相反", "muted")
     # section header

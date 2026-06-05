@@ -1,11 +1,14 @@
 # scanner/theme_scanner.py
-import sys, os, statistics
+import sys, os, statistics, threading
 from dataclasses import dataclass
+from concurrent.futures import ThreadPoolExecutor
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "analysis"))
 
 from concept import store
 from data import institutional, cache
 from ui import theme as uitheme
+
+MAX_WORKERS = 10
 
 
 @dataclass
@@ -22,6 +25,7 @@ class ThemeMetrics:
     signal: str = ""
     diverge: bool = False
     today_pct: float = 0.0  # 今日漲幅（成分股平均）
+    pending: bool = False   # 進度顯示用：尚未掃完（畫成骨架/微光）
 
 
 def is_diverge(m: float, inst: float) -> bool:
@@ -143,10 +147,44 @@ def _all_codes(con, theme_id):
     return cons
 
 
+def _theme_metrics(t, count, rows_list):
+    agg = aggregate_theme(rows_list)
+    return ThemeMetrics(theme_id=t["id"], key=t["key"], name=t["name"],
+                        momentum_5d=round(agg["momentum_5d"], 1), inst_net=agg["inst_net"],
+                        count=count, up_count=agg["up_count"], down_count=agg["down_count"],
+                        strong_ratio=agg["strong_ratio"],
+                        diverge=is_diverge(agg["momentum_5d"], agg["inst_net"]),
+                        today_pct=round(agg["today_pct"], 1))
+
+
+def _scan_codes_parallel(con, codes, force=False, progress=None, max_workers=MAX_WORKERS):
+    """平行分析一組代號（去重）→ {code: row}。progress(done,total) thread-safe。"""
+    codes = list(dict.fromkeys(codes))   # 去重保序
+    results, done, lock, total = {}, [0], threading.Lock(), len(codes)
+
+    def work(code):
+        row = analyze_stock_row(code, con, force=force)
+        with lock:
+            results[code] = row
+            done[0] += 1
+            if progress:
+                progress(done[0], total)
+
+    if codes:
+        with ThreadPoolExecutor(max_workers=max_workers) as ex:
+            for f in [ex.submit(work, c) for c in codes]:
+                try:
+                    f.result()
+                except Exception:
+                    pass
+    return results
+
+
 def scan_theme(con, theme_id, force=False):
-    """題材所有成分股逐檔分析 → {code: row} + 聚合。force=True 略過快取重算。"""
+    """題材所有成分股平行分析 → {code: row} + 聚合。force=True 略過快取重算。"""
     cons = _all_codes(con, theme_id)
-    rows = {c["code"]: analyze_stock_row(c["code"], con, force=force) for c in cons}
+    res = _scan_codes_parallel(con, [c["code"] for c in cons], force=force)
+    rows = {c["code"]: res[c["code"]] for c in cons if c["code"] in res}
     agg = aggregate_theme(list(rows.values()))
     return rows, agg
 
@@ -162,24 +200,64 @@ def all_constituent_codes(con):
 
 
 def real_overview(con, force=False, progress=None):
-    """progress(done, total)：每分析完一檔回報一次（給冷啟動進度條）。"""
+    """平行掃描全部成分股 → 各題材 ThemeMetrics。progress(done,total)。"""
     themes = store.list_themes(con)
-    total = sum(len(_all_codes(con, t["id"])) for t in themes)
-    done = 0
+    theme_cons = {t["id"]: _all_codes(con, t["id"]) for t in themes}
+    all_codes = [c["code"] for t in themes for c in theme_cons[t["id"]]]
+    res = _scan_codes_parallel(con, all_codes, force=force, progress=progress)
     out = []
     for t in themes:
-        cons = _all_codes(con, t["id"])
-        rows = []
-        for c in cons:
-            rows.append(analyze_stock_row(c["code"], con, force=force))
-            done += 1
-            if progress:
-                progress(done, total)
-        agg = aggregate_theme(rows)
+        cons = theme_cons[t["id"]]
+        rows = [res[c["code"]] for c in cons if c["code"] in res]
+        out.append(_theme_metrics(t, len(cons), rows))
+    return out
+
+
+def start_overview_scan(con, force=False, max_workers=MAX_WORKERS):
+    """背景漸進掃描 session：呼叫端用 io_bound 跑 sess['run']；UI 輪詢共享狀態。
+    sess['metrics'][theme_id] 於該題材全部成分股完成時填入 ThemeMetrics。"""
+    themes = store.list_themes(con)
+    theme_cons = {t["id"]: _all_codes(con, t["id"]) for t in themes}
+    uniq = list(dict.fromkeys(c["code"] for t in themes for c in theme_cons[t["id"]]))
+    sess = {"lock": threading.Lock(), "done": 0, "total": len(uniq),
+            "metrics": {}, "finished": False, "themes": themes, "theme_cons": theme_cons}
+
+    def run():
+        results = {}
+        lock = sess["lock"]
+
+        def work(code):
+            row = analyze_stock_row(code, con, force=force)
+            with lock:
+                results[code] = row
+                sess["done"] += 1
+                for t in themes:                         # 檢查哪些題材剛好全部完成
+                    if t["id"] in sess["metrics"]:
+                        continue
+                    codes = [c["code"] for c in theme_cons[t["id"]]]
+                    if all(cc in results for cc in codes):
+                        rows = [results[cc] for cc in codes if results.get(cc)]
+                        sess["metrics"][t["id"]] = _theme_metrics(t, len(codes), rows)
+
+        if uniq:
+            with ThreadPoolExecutor(max_workers=max_workers) as ex:
+                for f in [ex.submit(work, c) for c in uniq]:
+                    try:
+                        f.result()
+                    except Exception:
+                        pass
+        with lock:
+            sess["finished"] = True
+
+    sess["run"] = run
+    return sess
+
+
+def skeleton_metrics(con):
+    """畫骨架用：每題材一個 pending ThemeMetrics（灰、分析中）。"""
+    out = []
+    for t in store.list_themes(con):
         out.append(ThemeMetrics(theme_id=t["id"], key=t["key"], name=t["name"],
-                                momentum_5d=round(agg["momentum_5d"], 1), inst_net=agg["inst_net"],
-                                count=len(cons), up_count=agg["up_count"], down_count=agg["down_count"],
-                                strong_ratio=agg["strong_ratio"],
-                                diverge=is_diverge(agg["momentum_5d"], agg["inst_net"]),
-                                today_pct=round(agg["today_pct"], 1)))
+                                 momentum_5d=0, inst_net=0, count=len(_all_codes(con, t["id"])),
+                                 pending=True))
     return out

@@ -122,47 +122,53 @@ def index():
         stock_modal.open_modal(c, r, get_ohlc=lambda code: fetcher.ohlc_for_echart(code)[1],
                                on_add_watch=_add_watch, on_report=_show_report)
 
-    async def _scan_with_progress(force):
-        """冷啟動/重掃：顯示「掃描中 X/總數」進度，掃描在背景執行緒跑完再畫熱圖。"""
-        codes = theme_scanner.all_constituent_codes(con)
-        prog = {"done": 0, "total": len(codes)}
+    def _draw_overview(metrics, status=None):
+        if state["page"] != "overview":
+            return
         content_box.clear()
         with content_box:
-            with ui.column().classes("w-full").style("align-items:center;padding:48px;gap:16px;"):
-                ui.spinner(size="lg", color="amber")
-                lbl = ui.label(f"掃描中… 0/{prog['total']}（完成後當日不再重掃）").style("color:var(--t2);")
-                bar = ui.linear_progress(value=0, show_value=False, color="amber").style("width:300px;")
-
-        def _upd():
-            lbl.set_text(f"掃描中… {prog['done']}/{prog['total']}（完成後當日不再重掃）")
-            bar.set_value(prog["done"] / max(1, prog["total"]))
-        pt = ui.timer(0.3, _upd)
-        metrics = await run.io_bound(theme_scanner.real_overview, con, force, lambda d, t: prog.update(done=d))
-        pt.cancel()
-        _draw_overview(metrics)
-
-    def _draw_overview(metrics):
-        content_box.clear()
-        with content_box:
+            if status:
+                ui.label(status).style("font-size:12px;color:var(--t3);margin-bottom:8px;")
             overview.render(con, on_open_theme=lambda m: navigate("detail", m.theme_id),
                             get_metrics=lambda: metrics, on_theme_changed=lambda: navigate("overview"),
-                            on_refresh=lambda: ui.timer(0.01, lambda: _scan_with_progress(True), once=True))
+                            on_refresh=(None if os.environ.get("MVP_MOCK") == "1"
+                                        else lambda: ui.timer(0.01, lambda: _progressive_overview(True), once=True)))
+
+    async def _progressive_overview(force):
+        """背景平行掃描 + 漸進顯示：先畫骨架，每完成一個題材即時填入該塊。"""
+        import datetime as _dt
+        sess = theme_scanner.start_overview_scan(con, force=force)
+        themes = sess["themes"]
+        skel = {m.theme_id: m for m in theme_scanner.skeleton_metrics(con)}
+
+        def current():
+            return [sess["metrics"].get(t["id"]) or skel[t["id"]] for t in themes]
+
+        def tick():
+            if state["page"] != "overview":
+                return
+            with sess["lock"]:
+                done, total, fin = sess["done"], sess["total"], sess["finished"]
+            _draw_overview(current(), status=(None if fin else f"分析中… {done}/{total}（背景進行，可先點選已完成題材）"))
+        _draw_overview(current(), status=f"分析中… 0/{sess['total']}")
+        poll = ui.timer(0.6, tick)
+        await run.io_bound(sess["run"])
+        poll.cancel()
+        _draw_overview(current(), status=f"更新於 {_dt.datetime.now().strftime('%H:%M')}")
 
     async def _render_overview():
         content_box.clear()
         if os.environ.get("MVP_MOCK") == "1":
-            with content_box:
-                overview.render(con, on_open_theme=lambda m: navigate("detail", m.theme_id),
-                                get_metrics=theme_scanner.mock_overview,
-                                on_theme_changed=lambda: navigate("overview"), on_refresh=None)
+            _draw_overview(theme_scanner.mock_overview())
             return
         from data import cache as _cache
         codes = theme_scanner.all_constituent_codes(con)
         need = [c for c in codes if not (lambda rt: rt[0] and _cache.is_today(rt[1]))(_cache.get(con, c, "row"))]
-        if not need:                       # 當日全快取 → 直接畫（快）
-            _draw_overview(theme_scanner.real_overview(con))
-        else:                              # 冷啟動 → 進度條
-            await _scan_with_progress(force=False)
+        if not need:                       # 當日全快取 → 瞬開
+            import datetime as _dt
+            _draw_overview(theme_scanner.real_overview(con), status=f"更新於 {_dt.datetime.now().strftime('%H:%M')}")
+        else:                              # 冷啟動 → 背景漸進掃描
+            await _progressive_overview(force=False)
 
     def _render_content():
         price_cells.clear()

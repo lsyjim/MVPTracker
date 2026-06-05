@@ -1,12 +1,10 @@
+log/
+*.log
+*.log.*
 __pycache__/
 *.pyc
-storage/app.db
 .DS_Store
-# 執行期產物（vendored 後端在執行時建立）
-log/
-analysis/info_cache.json
-watchlist_v4*.db
-# 機器本地設定
-.claude/settings.local.json
-# 富邦登入憑證（切勿進版控）
+*.db
 storage/fubon_credentials.json
+*.p12
+*.pfx

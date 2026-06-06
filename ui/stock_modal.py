@@ -129,10 +129,12 @@ def open_modal(c, r, get_ohlc=None, on_add_watch=None, on_report=None, get_chip=
             if get_full:
                 async def _load_full():
                     full = await run.io_bound(get_full, c["code"])
-                    if full and full.get("available"):
-                        inst_box.clear()
-                        with inst_box:
-                            _inst_table(full)
+                    inst_box.clear()
+                    with inst_box:
+                        if full and full.get("available"):
+                            _inst_table(full)            # TWSE 完整（連續日期、正確連買）
+                        else:
+                            _inst_table(chip)            # 退回 wukong（去掉「補完整中」字樣）
                 ui.timer(0.05, _load_full, once=True)
             with ui.element("div").style("display:flex;gap:10px;margin-top:14px;"):
                 ui.button("＋ 加入自選股", on_click=lambda: (on_add_watch and on_add_watch(c))).props("flat no-caps").style(

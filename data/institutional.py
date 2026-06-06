@@ -1,5 +1,6 @@
 # data/institutional.py — 個股 /iibs 三大法人 → chip_flow
 import requests
+import time
 from data import cache
 
 IIBS_URL = "https://api.wukong.com.tw/stock/{code}/iibs"
@@ -129,31 +130,37 @@ def _streak_series(items, key):
 
 
 def _t86_for_date(con, date_str):
-    """TWSE T86 某交易日 → {code: [外, 投, 自, 合計]}（張）。歷史不變，永久快取、跨股共用。"""
+    """TWSE T86 某交易日 → {code: [外, 投, 自, 合計]}（張）。歷史不變，永久快取、跨股共用。
+    ★ 驗證回應 date/stat == 請求日（TWSE 在高頻/並發下會回錯日或殘缺資料）；不符就重試，仍不符不快取。"""
     if con is not None:
         payload, _ = cache.get(con, date_str, "t86")
         if payload is not None:
             return payload
-    try:
-        r = requests.get(T86_URL, params={"response": "json", "date": date_str, "selectType": "ALL"},
-                         headers={"User-Agent": "Mozilla/5.0"}, timeout=12)
-        rows = (r.json() or {}).get("data") or []
-    except Exception as e:
-        print(f"[institutional] TWSE T86 {date_str} 失敗: {e}")
-        return {}
-    out = {}
-    for row in rows:
+    for attempt in range(3):
+        time.sleep(0.3 * (attempt + 1))   # 輕節流：TWSE 對高頻請求會回錯日資料
         try:
-            code = row[0].strip()
-            out[code] = [int(round(int(row[4].replace(",", "")) / 1000)),   # 外陸資買賣超
-                         int(round(int(row[10].replace(",", "")) / 1000)),  # 投信買賣超
-                         int(round(int(row[11].replace(",", "")) / 1000)),  # 自營商買賣超(合計)
-                         int(round(int(row[18].replace(",", "")) / 1000))]  # 三大法人合計
-        except Exception:
-            continue
-    if con is not None and out:
-        cache.put(con, date_str, "t86", out)
-    return out
+            r = requests.get(T86_URL, params={"response": "json", "date": date_str, "selectType": "ALL"},
+                             headers={"User-Agent": "Mozilla/5.0"}, timeout=12)
+            d = r.json() or {}
+            if d.get("stat") == "OK" and d.get("date") == date_str and d.get("data"):
+                out = {}
+                for row in d["data"]:
+                    try:
+                        out[row[0].strip()] = [
+                            int(round(int(row[4].replace(",", "")) / 1000)),    # 外陸資買賣超
+                            int(round(int(row[10].replace(",", "")) / 1000)),   # 投信買賣超
+                            int(round(int(row[11].replace(",", "")) / 1000)),   # 自營商買賣超(合計)
+                            int(round(int(row[18].replace(",", "")) / 1000))]   # 三大法人合計
+                    except Exception:
+                        continue
+                if out:
+                    if con is not None:
+                        cache.put(con, date_str, "t86", out)
+                    return out
+        except Exception as e:
+            print(f"[institutional] TWSE T86 {date_str} 試{attempt + 1}失敗: {e}")
+        time.sleep(0.6 * (attempt + 1))
+    return {}
 
 
 def full_chip_flow(code, con=None, days=15):
@@ -164,19 +171,25 @@ def full_chip_flow(code, con=None, days=15):
         if payload and cache.is_today(ts):
             return payload
     from data import fetcher
-    from concurrent.futures import ThreadPoolExecutor
     rec = fetcher.recent_daily(code, days)               # 交易日曆（完整，含 wukong 缺的日）
     dates = [it["date"] for it in rec][::-1]             # 由新到舊
-    # 平行抓各交易日 T86（每日結果跨股共用快取；TWSE 歷史不變）
-    with ThreadPoolExecutor(max_workers=6) as ex:
-        t86_by_date = dict(ex.map(lambda d: (d, _t86_for_date(con, d.replace("-", ""))), dates))
+    # ★ TWSE T86 在『任何並發』下都會回錯資料（錯日資料卻標對日期）→ 只能逐日序列抓。
+    # 每日結果跨股共用快取，所以只有當天第一個人慢；之後（任何股）瞬開。
     series = []
     for d in dates:
-        v = (t86_by_date.get(d) or {}).get(code)
+        v = _t86_for_date(con, d.replace("-", "")).get(code)
         if v:
             series.append({"date": d, "foreign": v[0], "trust": v[1], "dealer": v[2], "total": v[3]})
-    if not series:
-        return {"available": False}
+    # ★ 完整性把關：TWSE 在某些環境/日期會缺日或回錯日。series 必須覆蓋完整交易日曆才採用；
+    #   不完整 → 回 unavailable（彈窗退回 wukong），並快取此判定避免反覆重爬。
+    #   生產環境（真實日期）TWSE 完整 → 採用 → 連買/日期正確。
+    have = {it["date"] for it in series}
+    missing = [d for d in dates if d not in have]
+    if missing or len(series) < 5:
+        result = {"available": False, "incomplete": True, "missing": missing[:6]}
+        if con is not None:
+            cache.put(con, code, "iibs_full", result)
+        return result
     five = series[:5]
     summary = {
         "available": True, "source": "TWSE",

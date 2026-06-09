@@ -4,38 +4,86 @@
     {
       "name": "mvp-web",
       "runtimeExecutable": "env",
-      "runtimeArgs": ["MVP_WEB=1", "MVP_PORT=8200", "python3", "main.py"],
+      "runtimeArgs": [
+        "MVP_WEB=1",
+        "MVP_PORT=8200",
+        "python3",
+        "main.py"
+      ],
       "port": 8200
     },
     {
       "name": "mvp-robot",
       "runtimeExecutable": "env",
-      "runtimeArgs": ["MVP_WEB=1", "MVP_PORT=8201", "MVP_DETAIL=18", "python3", "main.py"],
+      "runtimeArgs": [
+        "MVP_WEB=1",
+        "MVP_PORT=8201",
+        "MVP_DETAIL=18",
+        "python3",
+        "main.py"
+      ],
       "port": 8201
     },
     {
       "name": "mvp-modal",
       "runtimeExecutable": "env",
-      "runtimeArgs": ["MVP_WEB=1", "MVP_PORT=8202", "MVP_DETAIL=18", "MVP_MODAL=1", "python3", "main.py"],
+      "runtimeArgs": [
+        "MVP_WEB=1",
+        "MVP_PORT=8202",
+        "MVP_DETAIL=18",
+        "MVP_MODAL=1",
+        "python3",
+        "main.py"
+      ],
       "port": 8202
     },
     {
       "name": "mvp-foundry",
       "runtimeExecutable": "env",
-      "runtimeArgs": ["MVP_WEB=1", "MVP_PORT=8203", "MVP_DETAIL=3", "python3", "main.py"],
+      "runtimeArgs": [
+        "MVP_WEB=1",
+        "MVP_PORT=8203",
+        "MVP_DETAIL=3",
+        "python3",
+        "main.py"
+      ],
       "port": 8203
     },
     {
       "name": "mvp-watch",
       "runtimeExecutable": "env",
-      "runtimeArgs": ["MVP_WEB=1", "MVP_PORT=8204", "MVP_PAGE=watch", "python3", "main.py"],
+      "runtimeArgs": [
+        "MVP_WEB=1",
+        "MVP_PORT=8204",
+        "MVP_PAGE=watch",
+        "python3",
+        "main.py"
+      ],
       "port": 8204
     },
     {
       "name": "mvp-mock",
       "runtimeExecutable": "env",
-      "runtimeArgs": ["MVP_WEB=1", "MVP_PORT=8205", "MVP_MOCK=1", "python3", "main.py"],
+      "runtimeArgs": [
+        "MVP_WEB=1",
+        "MVP_PORT=8205",
+        "MVP_MOCK=1",
+        "python3",
+        "main.py"
+      ],
       "port": 8205
+    },
+    {
+      "name": "mvp-ai",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "MVP_WEB=1",
+        "MVP_PORT=8206",
+        "MVP_DETAIL=1",
+        "python3",
+        "main.py"
+      ],
+      "port": 8206
     }
   ]
 }

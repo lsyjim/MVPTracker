@@ -26,16 +26,26 @@ def init_fubon(sdk=None) -> bool:
 
 def recent_daily(code, n=6, market="台股"):
     """近 n 個交易日：[{date, close, pct}]（oldest→newest）。
-    pct 用前一交易日收盤比較（日線本身已跳過假日）→ 永遠是『最近交易日 vs 前一交易日』。"""
+    pct 用前一交易日收盤比較（日線本身已跳過假日）→ 永遠是『最近交易日 vs 前一交易日』。
+    盤前/未開盤時當日 K 棒收盤為 NaN/0，須濾掉，避免出現 nan%（改以最後『有成交』的交易日為準）。"""
+    import math
     df = get_history(code, market, period="1mo")
     if df is None or len(df) < 2:
         return []
-    closes = [float(x) for x in df["Close"]]
-    dates = list(df.index)
+    pairs = []
+    for d, c in zip(df.index, df["Close"]):
+        try:
+            cf = float(c)
+        except (TypeError, ValueError):
+            continue
+        if cf > 0 and not math.isnan(cf):      # 濾掉未開盤/無成交的空 K 棒
+            pairs.append((d, cf))
+    if len(pairs) < 2:
+        return []
     out = []
-    for i in range(1, len(closes)):
-        prev, cur = closes[i - 1], closes[i]
-        out.append({"date": dates[i].strftime("%Y-%m-%d"), "close": round(cur, 2),
+    for i in range(1, len(pairs)):
+        prev, cur = pairs[i - 1][1], pairs[i][1]
+        out.append({"date": pairs[i][0].strftime("%Y-%m-%d"), "close": round(cur, 2),
                     "pct": round((cur / prev - 1) * 100, 2) if prev else 0.0})
     return out[-n:]
 

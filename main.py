@@ -62,7 +62,7 @@ def _add_watch(c):
 
 
 _RAIL_ITEMS = [("overview", "總覽", False), ("ranking", "排行", False),
-               ("quadrant", "象限", True), ("detail", "明細", False), ("watch", "自選", False)]
+               ("quadrant", "象限", False), ("detail", "明細", False), ("watch", "自選", False)]
 
 
 @ui.page("/")
@@ -222,7 +222,9 @@ def index():
                 from ui import watchlist
                 watchlist.render(con)
             elif state["page"] == "quadrant":
-                ui.label("象限圖為 v2 功能（先預留）。").style("color:var(--t3);")
+                from ui import quadrant
+                quadrant.render(theme_scanner.cached_overview(con),
+                                on_open_theme=lambda tid: navigate("detail", tid))
 
     _render_nav()
     _render_content()

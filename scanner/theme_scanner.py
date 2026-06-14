@@ -272,6 +272,26 @@ def start_overview_scan(con, force=False, max_workers=MAX_WORKERS):
     return sess
 
 
+def cached_overview(con):
+    """只用當日快取的 row 組各題材 ThemeMetrics（不掃描）；無快取的題材標 pending。
+    供象限圖等沿用總覽結果、不另抓資料。鎖內讀取以兼容背景掃描。"""
+    out = []
+    with cache._lock:
+        for t in store.list_themes(con):
+            cons = _all_codes(con, t["id"])
+            rows = []
+            for c in cons:
+                row, ts = cache.get(con, c["code"], "row")
+                if row and cache.is_today(ts):
+                    rows.append(row)
+            if rows:
+                out.append(_theme_metrics(t, len(cons), rows))
+            else:
+                out.append(ThemeMetrics(theme_id=t["id"], key=t["key"], name=t["name"],
+                                        momentum_5d=0, inst_net=0, count=len(cons), pending=True))
+    return out
+
+
 def skeleton_metrics(con):
     """畫骨架用：每題材一個 pending ThemeMetrics（灰、分析中）。"""
     out = []

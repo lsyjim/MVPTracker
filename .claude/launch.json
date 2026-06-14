@@ -84,6 +84,18 @@
         "main.py"
       ],
       "port": 8206
+    },
+    {
+      "name": "mvp-quad",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "MVP_WEB=1",
+        "MVP_PORT=8207",
+        "MVP_PAGE=quadrant",
+        "python3",
+        "main.py"
+      ],
+      "port": 8207
     }
   ]
 }

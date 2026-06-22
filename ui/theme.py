@@ -67,5 +67,7 @@ def apply_global():
       .up {{ color:var(--up); }} .down {{ color:var(--down); }}
       .muted {{ color:var(--t2); }} .gold {{ color:var(--inst); }}
       @keyframes mvppulse {{ 0%,100%{{opacity:.45}} 50%{{opacity:.7}} }}
-    </style>
+      .crow:hover .rm {{ opacity:.75 !important; }}
+      .crow .rm:hover {{ color:var(--down) !important; }}
+</style>
     """)

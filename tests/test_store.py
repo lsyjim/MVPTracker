@@ -42,6 +42,38 @@ def test_remove_constituent(tmp_path):
     assert store.list_constituents(con, ai["id"], None) == []
 
 
+def test_rename_theme_and_sub(tmp_path):
+    con = _con(tmp_path); store.import_concept_map(con, SEED)
+    robot = store.get_theme_by_key(con, "18_robot")
+    store.rename_theme(con, robot["id"], "機器人(改)")
+    assert store.get_theme(con, robot["id"])["name"] == "機器人(改)"
+    sub = store.list_sub_themes(con, robot["id"])[0]
+    store.rename_sub_theme(con, sub["id"], "伺服(改)")
+    assert store.list_sub_themes(con, robot["id"])[0]["name"] == "伺服(改)"
+
+
+def test_remove_sub_theme_cascades(tmp_path):
+    con = _con(tmp_path); store.import_concept_map(con, SEED)
+    robot = store.get_theme_by_key(con, "18_robot")
+    sub = store.list_sub_themes(con, robot["id"])[0]
+    assert store.count_constituents(con, sub_theme_id=sub["id"]) == 1
+    store.remove_sub_theme(con, sub["id"])
+    assert store.list_sub_themes(con, robot["id"]) == []
+    assert store.list_constituents(con, robot["id"], sub["id"]) == []
+
+
+def test_remove_theme_cascades(tmp_path):
+    con = _con(tmp_path); store.import_concept_map(con, SEED)
+    robot = store.get_theme_by_key(con, "18_robot")
+    store.remove_theme(con, robot["id"])
+    assert store.get_theme(con, robot["id"]) is None
+    assert store.list_sub_themes(con, robot["id"]) == []
+    # constituents under that theme gone
+    assert con.execute("SELECT COUNT(*) FROM constituents WHERE theme_id=?", (robot["id"],)).fetchone()[0] == 0
+    # other theme intact
+    assert store.get_theme_by_key(con, "01_ai_server") is not None
+
+
 def test_export_roundtrip(tmp_path):
     con = _con(tmp_path); store.import_concept_map(con, SEED)
     exported = store.export_concept_map(con)

@@ -74,6 +74,35 @@ def remove_constituent(con, constituent_id):
     con.execute("DELETE FROM constituents WHERE id=?", (constituent_id,)); con.commit()
 
 
+def rename_theme(con, theme_id, name):
+    con.execute("UPDATE themes SET name=? WHERE id=?", (name, theme_id)); con.commit()
+
+
+def rename_sub_theme(con, sub_theme_id, name):
+    con.execute("UPDATE sub_themes SET name=? WHERE id=?", (name, sub_theme_id)); con.commit()
+
+
+def remove_theme(con, theme_id):
+    """刪除題材：連同其子題材與所有成分股一併移除。"""
+    con.execute("DELETE FROM constituents WHERE theme_id=?", (theme_id,))
+    con.execute("DELETE FROM sub_themes WHERE theme_id=?", (theme_id,))
+    con.execute("DELETE FROM themes WHERE id=?", (theme_id,))
+    con.commit()
+
+
+def remove_sub_theme(con, sub_theme_id):
+    """刪除子題材：連同其底下成分股一併移除。"""
+    con.execute("DELETE FROM constituents WHERE sub_theme_id=?", (sub_theme_id,))
+    con.execute("DELETE FROM sub_themes WHERE id=?", (sub_theme_id,))
+    con.commit()
+
+
+def count_constituents(con, theme_id=None, sub_theme_id=None):
+    if sub_theme_id is not None:
+        return con.execute("SELECT COUNT(*) FROM constituents WHERE sub_theme_id=?", (sub_theme_id,)).fetchone()[0]
+    return con.execute("SELECT COUNT(*) FROM constituents WHERE theme_id=?", (theme_id,)).fetchone()[0]
+
+
 def export_concept_map(con):
     out = {"version": 1, "exported_at": datetime.date.today().isoformat(), "themes": []}
     for t in list_themes(con):

@@ -216,7 +216,8 @@ def index():
                 detail.render(con, tid, on_open_stock=_open_stock,
                               on_changed=lambda: navigate("detail", tid),
                               get_row=lambda code: rows.get(code) or detail._mock_row(code),
-                              header=header, on_refresh=do_refresh, price_cells=price_cells)
+                              header=header, on_refresh=do_refresh, price_cells=price_cells,
+                              on_theme_deleted=lambda: navigate("overview"))
                 if os.environ.get("MVP_MODAL"):   # 測試 hook：走真實 _open_stock（含 get_chip）
                     ui.timer(0.4, lambda: _open_stock(
                         {"code": "2049", "name": "上銀", "in_master": 1},

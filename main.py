@@ -61,7 +61,7 @@ def _add_watch(c):
     ui.notify(f'已加入自選：{c.get("name", "")} {c["code"]}')
 
 
-_RAIL_ITEMS = [("overview", "總覽", False), ("ranking", "排行", False),
+_RAIL_ITEMS = [("overview", "總覽", False), ("ranking", "排行", False), ("recommend", "推薦", False),
                ("quadrant", "象限", False), ("detail", "明細", False), ("watch", "自選", False)]
 
 
@@ -196,6 +196,9 @@ def index():
             if state["page"] == "ranking":
                 from ui import ranking
                 ranking.render(con, on_open_theme=lambda tid: navigate("detail", tid), on_open_stock=_open_stock)
+            elif state["page"] == "recommend":
+                from ui import recommend
+                recommend.render(con, on_open_stock=_open_stock)
             elif state["page"] == "detail":
                 from ui import detail
                 tid = state["theme_id"]

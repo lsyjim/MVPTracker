@@ -96,6 +96,18 @@
         "main.py"
       ],
       "port": 8207
+    },
+    {
+      "name": "mvp-rec",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "MVP_WEB=1",
+        "MVP_PORT=8208",
+        "MVP_PAGE=recommend",
+        "python3",
+        "main.py"
+      ],
+      "port": 8208
     }
   ]
 }

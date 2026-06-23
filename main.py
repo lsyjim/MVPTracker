@@ -75,7 +75,7 @@ def index():
       .q-layout, .q-page-container, .q-page { background: var(--bg) !important; }
       .nicegui-content { padding: 0; gap: 0; }
     """)
-    price_cells = {}   # {code: (price_label, today_label)}，供自動刷新就地更新
+    price_cells = {}   # {code: (price_label, today_label, badge)}，供自動刷新就地更新
 
     # ----- 固定 HEADER -----
     with ui.header(fixed=True).style("background:var(--bar);border-bottom:0.5px solid var(--line);padding:10px 18px;"):
@@ -237,11 +237,23 @@ def index():
     async def _auto_price_tick():
         if state["page"] != "detail" or not price_cells:
             return
-        for code, (pl, tl) in list(price_cells.items()):
+        from ui import detail as _detail
+        for code, (pl, tl, bl) in list(price_cells.items()):
             try:
+                # 重新評級：QuickAnalyzer 以即時價計算 → 現價/今日%/投資建議全部跟著盤中更新。
+                r = await run.io_bound(theme_scanner.analyze_stock_row, code, con, True)
+                if not (r and r.get("_ok")):
+                    continue
+                pl.set_text(str(r["price"]))
+                bl.set_content(_detail.badge_inner(r["signal"]))   # 投資建議就地重繪
+                # 今日漲跌幅：用即時報價 change_pct（現價 vs 前日收盤,會跟著現價跳）。
+                # 盤前/未成交時為 0/None → 不覆寫,維持最後交易日基準（避免 +0.0%）。
                 q = await run.io_bound(fetcher.get_quote, code)
-                if q and q.get("price"):
-                    pl.set_text(str(q["price"]))   # #1 盤中只刷現價；漲跌幅維持日線收盤比較
+                cp = q.get("change_pct") if q else None
+                if cp not in (None, 0):
+                    cp = float(cp)
+                    tl.set_text(f"{cp:+.1f}%")
+                    tl.classes(replace=f"mono {'up' if cp >= 0 else 'down'}")
             except Exception:
                 pass
     if os.environ.get("MVP_NOREFRESH") != "1":

@@ -120,14 +120,20 @@ def _inst_cell(val, cons=0, dim=False):
 _SHORT = {"grade_A": "A 主攻", "grade_B": "B 追蹤", "grade_C": "觀察", "grade_sell": "賣出"}
 
 
+def badge_inner(sig):
+    """投資建議 badge 的內層 HTML（明細列用；自動刷新也用同一份重繪）。"""
+    tag = theme.grade_tag(sig) or "grade_C"
+    bg, fg = theme.BADGE[tag]
+    label = "暫缺" if sig == "資料暫缺" else _SHORT.get(tag, "觀察")
+    return (f'<span title="{sig}" style="font-size:12px;padding:4px 10px;border-radius:7px;font-weight:600;'
+            f'white-space:nowrap;background:{bg};color:{fg}">{label}</span>')
+
+
 def _stock_row(idx, c, r, on_open_stock, price_cells=None, on_remove=None):
     dc = "up" if r["today_pct"] >= 0 else "down"
     fc = "up" if r["d5_pct"] >= 0 else "down"
     rsc = "gold" if r["rs"] >= 80 else "muted"
     sig = r["signal"]
-    tag = theme.grade_tag(sig) or "grade_C"
-    bg, fg = theme.BADGE[tag]
-    label = "暫缺" if sig == "資料暫缺" else _SHORT.get(tag, "觀察")
     flag = "" if c["in_master"] else " ⚑"
     row = ui.element("div").classes("crow").style(_GRID + "position:relative;padding:9px 26px 9px 16px;font-size:13px;border-top:0.5px solid rgba(255,255,255,0.04);cursor:pointer;")
     row.on("click", lambda e: on_open_stock(c, r))
@@ -143,9 +149,8 @@ def _stock_row(idx, c, r, on_open_stock, price_cells=None, on_remove=None):
         _inst_cell(r.get("foreign_5d"), cons=(_fc if _fc >= 2 else 0))
         _inst_cell(r.get("trust_5d"), cons=(_tc if _tc >= 2 else 0))
         _inst_cell(r.get("dealer_5d"), dim=True)
-        # 短標籤 badge（完整訊號滑鼠移上顯示）
-        ui.html(f'<span title="{sig}" style="font-size:12px;padding:4px 10px;border-radius:7px;font-weight:600;'
-                f'white-space:nowrap;background:{bg};color:{fg}">{label}</span>')
+        # 短標籤 badge（完整訊號滑鼠移上顯示；自動刷新會就地重繪）
+        badge = ui.html(badge_inner(sig))
         # 移除鈕（hover 顯示；click.stop 不觸發開彈窗）
         if on_remove:
             rm = ui.label("✕").classes("rm").style(
@@ -153,7 +158,7 @@ def _stock_row(idx, c, r, on_open_stock, price_cells=None, on_remove=None):
                 "font-size:12px;cursor:pointer;opacity:0;transition:opacity .12s;")
             rm.on("click.stop", lambda e: on_remove())
     if price_cells is not None:
-        price_cells[c["code"]] = (price_label, today_label)
+        price_cells[c["code"]] = (price_label, today_label, badge)
 
 
 def _add_row(con, theme_id, sub_id, title, on_changed):
